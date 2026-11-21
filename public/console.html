@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KB Hub · 控制台</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --border: #e3e6ec;
+    --border-strong: #d3d8e2;
+    --text: #161a22;
+    --muted: #6a7383;
+    --faint: #9aa2b1;
+    --accent: #2b5cf0;
+    --accent-soft: #eef2ff;
+    --ok: #059669;
+    --ok-soft: #e7f7f1;
+    --warn: #b45309;
+    --warn-soft: #fdf4e3;
+    --err: #d92d20;
+    --err-soft: #feeceb;
+    --mark: #ffe8a3;
+    --mark-text: #6b4700;
+    --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px -12px rgba(16,24,40,.14);
+    --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1116;
+      --card: #161a21;
+      --border: #252b36;
+      --border-strong: #333b49;
+      --text: #e7eaf0;
+      --muted: #9aa3b3;
+      --faint: #6f7887;
+      --accent: #6f95ff;
+      --accent-soft: #1b2440;
+      --ok: #34d399;
+      --ok-soft: #0f2a22;
+      --warn: #fbbf24;
+      --warn-soft: #2a2110;
+      --err: #f87171;
+      --err-soft: #2c1414;
+      --mark: #6b5416;
+      --mark-text: #ffe9ad;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.7);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 28px 24px 72px; }
+
+  /* ---------- 顶栏 ---------- */
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
+  .logo {
+    width: 38px; height: 38px; border-radius: 11px; flex: none;
+    background: linear-gradient(140deg, var(--accent), #7c3aed);
+    color: #fff; font-weight: 700; font-size: 14px; letter-spacing: .5px;
+    display: grid; place-items: center;
+  }
+  .brand h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: -.2px; }
+  .brand p { margin: 1px 0 0; font-size: 12px; color: var(--faint); }
+  .pill {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12px; padding: 5px 11px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--border); color: var(--muted);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+  .dot.bad { background: var(--err); box-shadow: 0 0 0 3px var(--err-soft); }
+
+  /* ---------- 卡片 ---------- */
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; box-shadow: var(--shadow); padding: 18px;
+  }
+  .card + .card { margin-top: 14px; }
+  .card-title {
+    font-size: 12px; font-weight: 600; color: var(--faint);
+    text-transform: uppercase; letter-spacing: .8px; margin: 0 0 12px;
+  }
+
+  /* ---------- 凭证 ---------- */
+  .keyrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .field {
+    flex: 1; min-width: 240px; display: flex; align-items: center;
+    background: var(--bg); border: 1px solid var(--border-strong);
+    border-radius: 9px; padding: 0 10px; transition: border-color .15s;
+  }
+  .field:focus-within { border-color: var(--accent); }
+  .field input {
+    flex: 1; border: 0; background: transparent; color: var(--text);
+    font: 13px/1 var(--mono); padding: 10px 0; outline: none; min-width: 0;
+  }
+  .field .eye {
+    border: 0; background: transparent; color: var(--faint); cursor: pointer;
+    font-size: 12px; padding: 4px 2px 4px 8px;
+  }
+  .field .eye:hover { color: var(--text); }
+  button.btn {
+    border: 0; border-radius: 9px; padding: 10px 18px; cursor: pointer;
+    font-size: 13px; font-weight: 600; font-family: inherit;
+    background: var(--accent); color: #fff; transition: opacity .15s, transform .05s;
+    white-space: nowrap;
+  }
+  button.btn:hover { opacity: .9; }
+  button.btn:active { transform: translateY(1px); }
+  button.btn:disabled { opacity: .5; cursor: not-allowed; }
+  button.btn.ghost {
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border-strong);
+  }
+  button.btn.ghost:hover { color: var(--text); border-color: var(--text); opacity: 1; }
+  .hint { font-size: 12px; color: var(--faint); margin: 10px 0 0; }
+  .hint code { font-family: var(--mono); background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+
+  /* ---------- 统计 ---------- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 10px; }
+  .stat { background: var(--bg); border-radius: 10px; padding: 12px 14px; }
+  .stat .k { font-size: 11px; color: var(--faint); }
+  .stat .v { font-size: 20px; font-weight: 650; letter-spacing: -.5px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .spaces { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .tag {
+    font-size: 11px; padding: 3px 9px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent); font-weight: 500;
+  }
+  .tag.plain { background: var(--bg); color: var(--muted); }
+
+  /* ---------- 查询 ---------- */
+  .modebar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .seg { display: inline-flex; background: var(--bg); border-radius: 9px; padding: 3px; }
+  .seg button {
+    border: 0; background: transparent; color: var(--muted); cursor: pointer;
+    font: 600 12px/1 inherit; padding: 7px 14px; border-radius: 7px; font-family: inherit;
+    transition: background .15s, color .15s;
+  }
+  .seg button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  select.mini {
+    border: 1px solid var(--border-strong); background: var(--card); color: var(--muted);
+    font: 12px/1 inherit; font-family: inherit; padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  }
+  .spacer { flex: 1; }
+
+  .querybox {
+    display: flex; gap: 10px; align-items: stretch;
+  }
+  .querybox input {
+    flex: 1; min-width: 0; border: 1px solid var(--border-strong); border-radius: 10px;
+    background: var(--bg); color: var(--text); font: 15px/1.5 inherit;
+    padding: 13px 15px; outline: none; transition: border-color .15s, background .15s;
+  }
+  .querybox input:focus { border-color: var(--accent); background: var(--card); }
+  .querybox input::placeholder { color: var(--faint); }
+
+  .examples { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }  .chip {
+    font-size: 12px; padding: 5px 11px; border-radius: 999px; cursor: pointer;
+    background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+    font-family: inherit; transition: all .15s;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+  /* ---------- 上传 ---------- */
+  .dropzone {
+    border: 1.5px dashed var(--border-strong); border-radius: 12px;
+    padding: 20px 16px; text-align: center; color: var(--muted);
+    cursor: pointer; background: var(--bg); transition: all .15s; font-size: 13px;
+  }
+  .dropzone b { color: var(--text); font-weight: 600; }
+  .dropzone:hover, .dropzone.on {
+    border-color: var(--accent); background: var(--accent-soft); color: var(--accent);
+  }
+  .dropzone.on b { color: var(--accent); }
+  .upform { display: flex; gap: 9px; margin-top: 12px; flex-wrap: wrap; }
+  .upform .field { flex: 1; min-width: 150px; }
+  .upform .field input { font-family: inherit; font-size: 12.5px; }
+  .upform .field.pick { flex: 0 0 170px; min-width: 170px; }
+  .field select {
+    flex: 1; border: 0; background: transparent; color: var(--text);
+    font: 12.5px/1 inherit; font-family: inherit; padding: 9px 0;
+    outline: none; cursor: pointer; min-width: 0;
+  }
+  .uplist { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .upitem {
+    display: flex; gap: 9px; align-items: center; font-size: 12.5px;
+    padding: 8px 11px; border-radius: 8px; background: var(--bg);
+  }
+  .upitem .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upitem .st {
+    font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 5px; flex: none;
+  }
+  .st.ok { background: var(--ok-soft); color: var(--ok); }
+  .st.skip { background: var(--card); color: var(--muted); border: 1px solid var(--border); }
+  .st.bad { background: var(--err-soft); color: var(--err); }
+
+  /* ---------- 结果 ---------- */
+  #out { margin-top: 14px; }
+  .meta-line { font-size: 12px; color: var(--faint); margin-bottom: 12px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .meta-line b { color: var(--muted); font-weight: 600; }
+
+  .hit {
+    border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+    background: var(--card); transition: border-color .15s;
+  }
+  .hit + .hit { margin-top: 10px; }
+  .hit:hover { border-color: var(--border-strong); }
+  .hit-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; flex-wrap: wrap; }
+  .rank {
+    font: 600 11px/1 var(--mono); color: var(--faint);
+    background: var(--bg); border-radius: 5px; padding: 3px 6px; flex: none;
+  }
+  .hit-title { font-weight: 600; font-size: 13.5px; }
+  .sep { color: var(--faint); font-size: 11px; }
+  .hit-heading { color: var(--muted); font-size: 12.5px; }
+  .hit-body {
+    font-size: 13px; color: var(--text); white-space: pre-wrap; word-break: break-word;
+    margin: 0; opacity: .92;
+  }
+  .hit-foot {
+    display: flex; align-items: center; gap: 12px; margin-top: 10px;
+    font-size: 11px; color: var(--faint); flex-wrap: wrap;
+  }
+  .bar { flex: 1; max-width: 150px; height: 4px; background: var(--border); border-radius: 999px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+  .bar i.low { background: var(--faint); }
+  mark { background: var(--mark); color: var(--mark-text); padding: 0 1px; border-radius: 3px; }
+
+  /* ---------- 答案 ---------- */
+  .answer {
+    border: 1px solid var(--border); border-radius: 12px; background: var(--card);
+    padding: 16px 18px; white-space: pre-wrap; word-break: break-word;
+    font-size: 14px; line-height: 1.75;
+  }
+  .badges { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .badge {
+    font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px;
+    background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+  }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+  .badge.err { background: var(--err-soft); color: var(--err); border-color: transparent; }
+  .cites { margin-top: 12px; }
+  .cite {
+    display: flex; gap: 10px; padding: 9px 0; border-top: 1px dashed var(--border);
+    font-size: 12.5px; color: var(--muted);
+  }
+  .cite .n {
+    font: 600 11px/1.6 var(--mono); color: var(--accent); background: var(--accent-soft);
+    width: 19px; height: 19px; border-radius: 5px; display: grid; place-items: center; flex: none;
+  }
+  .cite .t { min-width: 0; }
+  .cite .snip { color: var(--faint); font-size: 12px; margin-top: 2px; }
+
+  /* ---------- 提示 ---------- */
+  .notice {
+    padding: 12px 14px; border-radius: 10px; font-size: 13px;
+    background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+  }
+  .notice.err { background: var(--err-soft); border-color: transparent; color: var(--err); }
+  .notice.warn { background: var(--warn-soft); border-color: transparent; color: var(--warn); }
+  .empty { text-align: center; padding: 44px 20px; color: var(--faint); font-size: 13px; }
+  .empty .big { font-size: 26px; margin-bottom: 8px; opacity: .5; }
+  .skel { height: 46px; border-radius: 10px; background: var(--bg); margin-bottom: 10px; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+  .spin {
+    display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff; border-radius: 50%; animation: sp .6s linear infinite;
+    vertical-align: -2px; margin-right: 6px;
+  }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  footer { margin-top: 26px; text-align: center; font-size: 11.5px; color: var(--faint); }
+  footer code { font-family: var(--mono); }
+  @media (max-width: 640px) {
+    .wrap { padding: 18px 14px 50px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .querybox { flex-direction: column; }
+    .querybox button { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">KB</div>
+    <div class="brand">
+      <h1>企业外置知识库 · 控制台</h1>
+      <p>KB Hub v0.1.0 · BM25 检索内核</p>
+    </div>
+    <div class="pill"><span class="dot" id="dot"></span><span id="svc">连接中…</span></div>
+  </header>
+
+  <section class="card">
+    <p class="card-title">接入凭证</p>
+    <div class="keyrow">
+      <div class="field">
+        <input id="key" type="password" placeholder="kb_live_…  粘贴企业 API Key" autocomplete="off" spellcheck="false">
+        <button class="eye" id="eye" type="button">显示</button>
+      </div>
+      <button class="btn" id="connect">连接</button>
+      <button class="btn ghost" id="clear" type="button">清除</button>
+    </div>
+    <p class="hint">凭证只存浏览器本地，不会上传。没有密钥？在项目目录执行 <code>node cli.js tenant:create "公司名"</code>。</p>
+  </section>
+
+  <section class="card" id="overview" hidden>
+    <p class="card-title">语料概览 <span id="tenantName" style="text-transform:none;letter-spacing:0;color:var(--muted)"></span></p>
+    <div class="stats">
+      <div class="stat"><div class="k">文档</div><div class="v" id="s-docs">0</div></div>
+      <div class="stat"><div class="k">知识块</div><div class="v" id="s-chunks">0</div></div>
+      <div class="stat"><div class="k">FAQ</div><div class="v" id="s-faqs">0</div></div>
+      <div class="stat"><div class="k">空间</div><div class="v" id="s-spaces">0</div></div>
+      <div class="stat"><div class="k">向量块</div><div class="v" id="s-vectors">0</div></div>
+      <div class="stat"><div class="k">可读等级</div><div class="v" id="s-level">—</div></div>
+    </div>
+    <div class="spaces" id="spaceTags"></div>
+  </section>
+
+  <section class="card">
+    <p class="card-title">上传内部资料</p>
+    <div class="dropzone" id="drop">
+      <b>拖文件到这里</b>，或点击选择文件<br>
+      <span style="font-size:12px">docx / pptx / xlsx / pdf / md / txt / csv / html，可多选，单次最多 20 个</span>
+      <input type="file" id="file" multiple hidden
+             accept=".docx,.pptx,.xlsx,.pdf,.md,.markdown,.txt,.csv,.html,.htm">
+    </div>
+    <div class="upform">
+      <div class="field"><input id="uploader" placeholder="上传人（工号/邮箱，可选）" autocomplete="off"></div>
+      <div class="field"><input id="uploadTags" placeholder="标签，逗号分隔（可选）" autocomplete="off"></div>
+      <div class="field pick"><select id="uploadLevel" title="文档密级，超过该等级的员工看不到">
+        <option value="1">密级 L1 · 公开</option>
+        <option value="2">密级 L2 · 内部</option>
+        <option value="3">密级 L3 · 敏感</option>
+        <option value="4">密级 L4 · 机密</option>
+        <option value="5">密级 L5 · 绝密</option>
+      </select></div>
+    </div>
+    <p class="hint">文件会归入上方「空间」下拉里选中的空间。原件按内容哈希永久保存，重复文件自动去重。密级决定谁能检索到这份资料，填高了连自己都查不到。</p>
+    <div class="uplist" id="upResult"></div>
+  </section>
+
+  <section class="card">
+    <div class="modebar">
+      <div class="seg" id="seg">
+        <button data-mode="search" aria-pressed="true">检索片段</button>
+        <button data-mode="ask" aria-pressed="false">智能问答</button>
+      </div>
+      <select class="mini" id="space"><option value="">全部空间</option></select>
+      <select class="mini" id="topk">
+        <option value="3">3 条</option>
+        <option value="5" selected>5 条</option>
+        <option value="10">10 条</option>
+      </select>
+      <div class="spacer"></div>
+    </div>
+    <div class="querybox">
+      <input id="q" type="text" placeholder="问点什么，例如：退款多久能到账" autocomplete="off">
+      <button class="btn" id="run">查询</button>
+    </div>
+    <div class="examples" id="examples">
+      <button class="chip">退款多久能到账</button>
+      <button class="chip">怎么申请开发票</button>
+      <button class="chip">接口频率限制怎么处理</button>
+      <button class="chip">数据库锁等待</button>
+      <button class="chip">新员工入职要准备什么</button>
+    </div>
+  </section>
+
+  <div id="out">
+    <div class="empty"><div class="big">⌕</div>填入 API Key 连接后，即可检索知识库或直接提问</div>
+  </div>
+
+  <footer>同一套检索内核，同时对外提供 REST API 与 MCP 插件 · <code>docs/openapi.json</code></footer>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const LS = 'kb.console.key';
+  const state = { key: '', mode: 'search', spaces: [], busy: false, tenant: null };
+
+  // ---------- 工具 ----------
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  function highlight(text, terms) {
+    const body = esc(text);
+    const list = [...new Set((terms || []).filter((t) => String(t).length >= 2).map(String))]
+      .sort((a, b) => b.length - a.length).slice(0, 50);
+    if (!list.length) return body;
+    const re = new RegExp('(' + list.map(escRe).join('|') + ')', 'g');
+    return body.replace(re, '<mark>$1</mark>');
+  }
+
+  function setStatus(kind, text) {
+    const dot = $('#dot');
+    dot.className = 'dot' + (kind === 'on' ? ' on' : kind === 'bad' ? ' bad' : '');
+    $('#svc').textContent = text;
+  }
+
+  async function api(path, body) {
+    const res = await fetch(path, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + state.key,
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    let data = null;
+    try { data = await res.json(); } catch { /* 非 JSON 响应 */ }
+    if (!res.ok) {
+      const msg = data?.error?.message || ('HTTP ' + res.status);
+      const err = new Error(msg); err.status = res.status; throw err;
+    }
+    return data;
+  }
+
+  // ---------- 输出区 ----------
+  function notice(kind, html) {
+    return '<div class="notice ' + kind + '">' + html + '</div>';
+  }
+  function skeleton(n) {
+    let s = '<div class="skel"></div>'.repeat(n);
+    return s;
+  }
+
+  function renderHits(d) {
+    const r = d.retrieval || {};
+    const chan = r.mode === 'hybrid'
+      ? '混合 ' + r.lexical_weight + '/' + r.vector_weight
+      : '纯词法';
+    const meta = '<div class="meta-line">'
+      + '<span>命中 <b>' + d.total + '</b> 条</span>'
+      + '<span>耗时 <b>' + d.took_ms + ' ms</b></span>'
+      + '<span>通道 <b>' + esc(chan) + '</b></span>'
+      + (d.reader_level != null ? '<span>可读等级 <b>L' + d.reader_level + '</b></span>' : '')
+      + '<span>查询词 <b>' + esc((d.query_terms || []).join(' · ') || '—') + '</b></span>'
+      + '</div>';
+    if (!d.hits || !d.hits.length) {
+      $('#out').innerHTML = meta + notice('warn', '没有找到相关内容。换个说法，或先确认该空间下是否已导入文档。');
+      return;
+    }
+    const items = d.hits.map((h, i) => {
+      const pct = Math.max(6, Math.round((h.relevance ?? 0) * 100));
+      const cls = (h.relevance ?? 0) < 0.35 ? ' low' : '';
+      return '<article class="hit">'
+        + '<div class="hit-head">'
+          + '<span class="rank">#' + (i + 1) + '</span>'
+          + '<span class="hit-title">' + esc(h.doc_title || '(无标题)') + '</span>'
+          + (h.heading ? '<span class="sep">›</span><span class="hit-heading">' + esc(h.heading) + '</span>' : '')
+        + '</div>'
+        + '<p class="hit-body">' + highlight(h.content, d.query_terms) + '</p>'
+        + '<div class="hit-foot">'
+          + '<span class="bar"><i class="' + cls.trim() + '" style="width:' + pct + '%"></i></span>'
+          + '<span>相关度 ' + pct + '%</span>'
+          + (h.coverage != null ? '<span>覆盖 ' + Math.round(h.coverage * 100) + '%</span>' : '')
+          + (h.space_name ? '<span class="tag plain">' + esc(h.space_name) + '</span>' : '')
+          + (Number(h.min_level) > 1 ? '<span class="tag plain">密级 L' + Number(h.min_level) + '</span>' : '')
+          + '<span>' + esc(h.source_uri || h.doc_type || '') + '</span>'
+        + '</div>'
+      + '</article>';
+    }).join('');
+    $('#out').innerHTML = meta + items;
+  }
+
+  function renderAsk(d) {
+    const modeMap = {
+      faq: ['ok', 'FAQ 命中'],
+      llm: ['ok', '模型生成'],
+      extractive: ['warn', '原文摘录'],
+      empty: ['err', '无可靠依据'],
+    };
+    const [cls, label] = modeMap[d.mode] || ['', d.mode];
+    const conf = d.confidence != null ? Math.round(d.confidence * 100) : null;
+
+    let html = '<div class="badges">'
+      + '<span class="badge ' + cls + '">' + esc(label) + '</span>'
+      + (conf != null ? '<span class="badge">置信度 ' + conf + '%</span>' : '')
+      + '<span class="badge">' + d.took_ms + ' ms</span>'
+      + '<span class="badge">' + (d.citations || []).length + ' 条引用</span>'
+      + '</div>';
+
+    if (d.mode === 'empty') {
+      html += notice('warn', esc(d.answer || '知识库里没有能支撑回答的内容。'));
+    } else {
+      html += '<div class="answer">' + highlight(d.answer, []) + '</div>';
+    }
+
+    if (d.disclaimer) html += '<div style="margin-top:10px">' + notice('', esc(d.disclaimer)) + '</div>';
+
+    if ((d.citations || []).length) {
+      html += '<div class="cites">' + d.citations.map((c) =>
+        '<div class="cite"><span class="n">' + c.index + '</span><div class="t">'
+        + '<div><b>' + esc(c.doc_title || '') + '</b>'
+        + (c.heading ? ' <span class="sep">›</span> ' + esc(c.heading) : '') + '</div>'
+        + (c.snippet ? '<div class="snip">' + esc(String(c.snippet).replace(/\n/g, ' ').slice(0, 120)) + '…</div>' : '')
+        + '</div></div>'
+      ).join('') + '</div>';
+    }
+    $('#out').innerHTML = html;
+  }
+
+  // ---------- 连接与概览 ----------
+  function fillSpaces(spaces) {
+    state.spaces = spaces || [];
+    $('#space').innerHTML = '<option value="">全部空间</option>'
+      + state.spaces.map((s) => '<option value="' + esc(s.id) + '">' + esc(s.name) + ' (' + (s.doc_count ?? 0) + ')</option>').join('');
+    $('#spaceTags').innerHTML = state.spaces.length
+      ? state.spaces.map((s) => '<span class="tag">' + esc(s.name) + ' · ' + (s.doc_count ?? 0) + '</span>').join('')
+      : '<span class="tag plain">尚未建立空间</span>';
+  }
+
+  async function connect(silent) {
+    state.key = $('#key').value.trim();
+    if (!state.key) {
+      setStatus('bad', '未填写密钥');
+      $('#out').innerHTML = notice('err', '请先填入 API Key。');
+      return;
+    }
+    localStorage.setItem(LS, state.key);
+    if (!silent) setStatus('', '连接中…');
+    try {
+      const m = await api('/v1/meta');
+      state.tenant = m.tenant;
+      setStatus('on', '已连接 · ' + m.tenant.name);
+      $('#overview').hidden = false;
+      $('#tenantName').textContent = '— ' + m.tenant.name;
+      $('#s-docs').textContent = m.corpus.documents;
+      $('#s-chunks').textContent = m.corpus.chunks;
+      $('#s-faqs').textContent = m.corpus.faqs;
+      $('#s-spaces').textContent = (m.spaces || []).length;
+      $('#s-vectors').textContent = m.corpus?.vectors?.chunks ?? 0;
+      const lv = Number(m.reader_level ?? 5);
+      $('#s-level').textContent = 'L' + lv;
+      $('#s-level').title = '这个密钥最多能读到 L' + lv + ' 的文档；更高的密级对你不可见';
+      // 密级选择不该高于自己可读的等级，否则传上去自己都查不到
+      const sel = $('#uploadLevel');
+      for (const opt of sel.options) opt.disabled = Number(opt.value) > lv;
+      if (Number(sel.value) > lv) sel.value = String(lv);
+      fillSpaces(m.spaces);
+      if (!silent) {
+        const mode = m.capabilities.retrieval === 'hybrid-bm25-vector' ? '混合检索（词法+向量）' : esc(m.capabilities.retrieval);
+        $('#out').innerHTML = notice('', '已就绪。输入问题，或点下面的示例开始。检索通道：<b>'
+          + esc(mode) + '</b>　回答模式：<b>' + esc(m.capabilities.answer_mode) + '</b>　可读等级：<b>L' + lv + '</b>');
+      }
+    } catch (e) {
+      setStatus('bad', e.status === 401 ? '密钥无效' : '连接失败');
+      $('#overview').hidden = true;
+      $('#out').innerHTML = notice('err', esc(e.message));
+    }
+  }
+
+  // ---------- 执行查询 ----------
+  async function run() {
+    if (state.busy) return;
+    const query = $('#q').value.trim();
+    if (!query) { $('#q').focus(); return; }
+    if (!state.key) { $('#out').innerHTML = notice('err', '请先填入 API Key 并连接。'); return; }
+
+    state.busy = true;
+    const btn = $('#run');
+    const old = btn.textContent;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span>查询中';
+    $('#out').innerHTML = skeleton(3);
+
+    const payload = { query, top_k: Number($('#topk').value) };
+    const sid = $('#space').value;
+    if (sid) payload.space_id = sid;
+
+    try {
+      if (state.mode === 'ask') {
+        renderAsk(await api('/v1/ask', payload));
+      } else {
+        renderHits(await api('/v1/search', payload));
+      }
+    } catch (e) {
+      $('#out').innerHTML = notice('err', esc(e.message));
+      if (e.status === 401) setStatus('bad', '密钥无效');
+    } finally {
+      state.busy = false;
+      btn.disabled = false;
+      btn.textContent = old;
+    }
+  }
+
+  // ---------- 事件 ----------
+  $('#connect').addEventListener('click', () => connect(false));
+  $('#key').addEventListener('keydown', (e) => { if (e.key === 'Enter') connect(false); });
+  $('#eye').addEventListener('click', () => {
+    const i = $('#key');
+    const show = i.type === 'password';
+    i.type = show ? 'text' : 'password';
+    $('#eye').textContent = show ? '隐藏' : '显示';
+  });
+  $('#clear').addEventListener('click', () => {
+    localStorage.removeItem(LS);
+    $('#key').value = '';
+    state.key = ''; state.tenant = null;
+    $('#overview').hidden = true;
+    setStatus('', '未连接');
+    $('#out').innerHTML = '<div class="empty"><div class="big">⌕</div>已清除本地凭证</div>';
+  });
+
+  $('#seg').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-mode]');
+    if (!b) return;
+    state.mode = b.dataset.mode;
+    [...$('#seg').children].forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    $('#q').placeholder = state.mode === 'ask' ? '直接提问，例如：怎么申请开发票' : '输入关键词，例如：退款 到账';
+  });
+
+  $('#run').addEventListener('click', run);
+  $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
+  $('#examples').addEventListener('click', (e) => {
+    const c = e.target.closest('.chip');
+    if (!c) return;
+    $('#q').value = c.textContent;
+    run();
+  });
+  ['#space', '#topk'].forEach((s) => $(s).addEventListener('change', () => { if ($('#q').value.trim() && state.key) run(); }));
+
+  // ---------- 上传 ----------
+  const drop = $('#drop');
+  const fileInput = $('#file');
+  let uploading = false;
+
+  function upRow(kind, name, extra) {
+    const map = { ok: '已入库', skip: '已存在', bad: '失败' };
+    return '<div class="upitem"><span class="st ' + kind + '">' + map[kind] + '</span>'
+      + '<span class="nm">' + esc(name) + '</span>'
+      + '<span style="color:var(--faint)">' + esc(extra || '') + '</span></div>';
+  }
+
+  async function uploadFiles(files) {
+    if (uploading) return;
+    if (!state.key) {
+      $('#upResult').innerHTML = upRow('bad', '未连接', '请先在上方填入 API Key');
+      return;
+    }
+    uploading = true;
+    $('#upResult').innerHTML = '<div class="upitem"><span class="st skip">上传中</span><span class="nm">'
+      + esc(files.length + ' 个文件…') + '</span></div>';
+
+    const fd = new FormData();
+    for (const f of files) fd.append('file', f, f.name);
+    const sid = $('#space').value;
+    if (sid) fd.append('space_id', sid);
+    const who = $('#uploader').value.trim();
+    if (who) fd.append('uploader', who);
+    const tg = $('#uploadTags').value.trim();
+    if (tg) fd.append('tags', tg);
+    const lv = $('#uploadLevel').value;
+    if (lv && lv !== '1') fd.append('min_level', lv);
+
+    try {
+      // 注意：FormData 不能手动设 Content-Type，浏览器要自己带 boundary
+      const res = await fetch('/v1/uploads', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + state.key },
+        body: fd,
+      });
+      const d = await res.json();
+      if (!d.items) throw new Error(d?.error?.message || ('HTTP ' + res.status));
+
+      $('#upResult').innerHTML = d.items.map((i) => {
+        if (i.status === 'failed') return upRow('bad', i.filename, i.error || '');
+        if (i.status === 'skipped') return upRow('skip', i.filename, '内容未变化');
+        const bits = [];
+        if (i.chunkCount != null) bits.push(i.chunkCount + ' 块');
+        if (i.parseStatus === 'failed') bits.push('文字抽取失败，原件已存');
+        return upRow('ok', i.filename, bits.join(' · '));
+      }).join('') + (d.hint
+        ? '<div class="upitem" style="color:var(--warn)">' + esc(d.hint) + '</div>'
+        : '');
+
+      await connect(true); // 刷新语料统计
+    } catch (e) {
+      $('#upResult').innerHTML = upRow('bad', '上传失败', e.message);
+    } finally {
+      uploading = false;
+      fileInput.value = '';
+    }
+  }
+
+  drop.addEventListener('click', () => fileInput.click());
+  ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
+    e.preventDefault();
+    drop.classList.add('on');
+  }));
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => {
+    e.preventDefault();
+    drop.classList.remove('on');
+  }));
+  drop.addEventListener('drop', (e) => {
+    if (e.dataTransfer?.files?.length) uploadFiles([...e.dataTransfer.files]);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) uploadFiles([...fileInput.files]);
+  });
+
+  // ---------- 初始化 ----------
+  (async () => {
+    try {
+      const h = await (await fetch('/health')).json();
+      setStatus('', '服务正常 · ' + h.version);
+      $('#svc').textContent = '服务正常 · v' + h.version + (h.llm && h.llm.startsWith('enabled') ? ' · LLM' : '');
+    } catch {
+      setStatus('bad', '服务不可达');
+    }
+    const saved = localStorage.getItem(LS);
+    if (saved) { $('#key').value = saved; connect(true); }
+  })();
+})();
+</script>
+</body>
+</html>

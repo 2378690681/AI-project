@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>企业外置知识库 · 项目简介</title>
+<style>
+  body { font-family: "宋体", SimSun, serif; font-size: 11pt; line-height: 1.75; color: #1a1a1a; }
+  h1 { font-family: "黑体", SimHei, sans-serif; font-size: 22pt; text-align: center; margin: 0 0 6pt; }
+  h2 { font-family: "黑体", SimHei, sans-serif; font-size: 14pt; margin: 20pt 0 8pt; border-left: 4px solid #2f5d8a; padding-left: 8pt; }
+  h3 { font-family: "黑体", SimHei, sans-serif; font-size: 12pt; margin: 14pt 0 6pt; }
+  p { margin: 0 0 8pt; text-indent: 2em; }
+  p.noindent { text-indent: 0; }
+  .sub { text-align: center; font-size: 10.5pt; color: #666; margin-bottom: 18pt; text-indent: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8pt 0 12pt; font-size: 10pt; }
+  th { background: #eef2f7; font-family: "黑体", SimHei, sans-serif; border: 1px solid #b9c5d3; padding: 6pt 8pt; text-align: left; }
+  td { border: 1px solid #c8d2de; padding: 6pt 8pt; vertical-align: top; }
+  ul, ol { margin: 0 0 10pt; padding-left: 22pt; }
+  li { margin-bottom: 4pt; }
+  .box { border: 1px solid #2f5d8a; background: #f5f8fb; padding: 10pt 14pt; margin: 10pt 0; }
+  .box p { text-indent: 0; margin: 0; }
+  .kv { font-family: "黑体", SimHei, sans-serif; }
+  .arch { font-family: "Consolas", "Courier New", monospace; font-size: 9.5pt; line-height: 1.5;
+          border: 1px solid #c8d2de; background: #fafbfc; padding: 10pt 12pt; margin: 10pt 0; white-space: pre; }
+  .small { font-size: 9.5pt; color: #555; }
+  .tag { display: inline-block; border: 1px solid #2f5d8a; color: #2f5d8a; font-size: 9pt; padding: 1pt 6pt; margin-right: 4pt; }
+</style>
+</head>
+<body>
+
+<h1>企业外置知识库</h1>
+<p class="sub">KB Hub · 独立部署的企业知识中枢<br>项目简介</p>
+
+<h2>一、这是什么</h2>
+
+<p>企业外置知识库是一套<strong>可以独立部署、供多个企业项目同时接入的知识服务</strong>。它把散落在各部门的文档、制度、手册、FAQ 收拢到一个统一的检索层，再以两种方式对外提供能力：一种是标准 REST API，供企业业务系统直接调用；另一种是 MCP 插件，供 AI Agent 挂载使用。</p>
+
+<p>它不是某个业务系统的附属模块，而是一个<strong>横向的基础设施</strong>——任何需要"查内部资料"的系统都能接进来，而不必各自维护一份文档索引。</p>
+
+<div class="box">
+<p><span class="kv">一句话定位：</span>企业内部的资料，存得全、检得准、答得快，并且不同企业、不同职级看到的范围严格不同。</p>
+</div>
+
+<h2>二、解决的三个问题</h2>
+
+<p>企业员工上传内部资料，真正的难点不在"上传"，而在上传之后的三个环节。这三件事各自需要独立的设计，任何一环缺失都会让整个知识库失去价值。</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:18%">问题</th><th style="width:34%">常见做法及其后果</th><th style="width:48%">本项目的做法</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>怎么完整保存</strong></td>
+  <td>先解析文字，解析成功才存文件。扫描件、加密 PDF、损坏文件解析必然失败，原件就此丢失，事后无法追溯。</td>
+  <td><strong>先落盘、再解析</strong>。原件按内容哈希永久保存，解析失败也照样入库并标记状态，员工仍可下载原文。每次内容变更另存一个版本，旧版不覆盖。</td>
+</tr>
+<tr>
+  <td><strong>怎么准确检索</strong></td>
+  <td>只用关键词匹配，词对得上就返回。问题是"词对得上但不是这一段"，排序靠猜。</td>
+  <td><strong>词法加权的混合检索</strong>。在 BM25 之上叠加短语命中、章节标题命中、命中词邻近度、数字硬词四项加权；再融合一路向量召回补语义。每一项得分都可通过参数单独查看。</td>
+</tr>
+<tr>
+  <td><strong>怎么快速回答</strong></td>
+  <td>把检索到的片段直接丢给大模型，模型在没有依据时自行编造，答案看起来合理但无法核对。</td>
+  <td><strong>FAQ 前置 + 缓存 + 带引用作答</strong>。高频问题直接命中标准答案；配置大模型后输出生成式答案，未配置时输出原文摘录并明确标注。知识库无依据时返回空结果，而不是编一个。</td>
+</tr>
+</tbody>
+</table>
+
+<h2>三、三个关键设计</h2>
+
+<h3>1. 一个企业一套服务、一个数据库文件</h3>
+
+<p>不是在同一张表里加一列租户标识，也不是一套服务托管多家企业，而是<strong>每个企业单独部署一套服务，指向自己的数据库文件</strong>：业务数据、后台账号、API 密钥、向量索引全部在这一个 <code>.db</code> 里，原始文件放在旁边的 <code>files/</code> 目录。企业之间连数据库连接都不共享，不存在「某个查询漏写了条件」导致数据串家的可能。备份是拷一个文件，迁移是改一条路径，下线是删一个目录。</p>
+
+<h3>2. 角色与职级两个维度共同决定权限</h3>
+
+<p>企业内常见的现实是：一个人能<strong>做什么操作</strong>（上传、删除、管人）和能<strong>看到什么内容</strong>（公开、内部、机密）是两件事。只用一个"管理员 / 普通用户"划分，要么管不住机密文件，要么把普通员工挡在门外。本项目把二者拆开：五个角色决定操作权限，五个员工等级决定数据可见范围，二者交叉生效。文档本身带密级，检索时在数据库层面就过滤掉越级内容——不是查到了再隐藏。</p>
+
+<h3>3. 每个企业有独立的管理后台</h3>
+
+<p>企业管理员登录自己的后台，可以管理本企业的成员账号、分配角色与等级、签发 API 密钥、调整文档密级、查看操作审计。后台的权限同样受角色与等级双重约束，并且内置防提权规则：不能被授予比自己更高的角色，不能管理等级高于自己的成员，任何时刻必须保留至少一位企业负责人。</p>
+
+<h2>四、系统架构</h2>
+
+<div class="arch">   企业业务系统          内部工具            AI Agent
+        |                   |                   |
+        |  REST API         |  REST API         |  MCP 插件
+        +---------+---------+---------+---------+
+                  |                   |
+                  v                   v
+        +-------------------------------------------+
+        |              知识库服务 (Node.js)          |
+        |  鉴权 · 限流 · 审计 · 密级过滤 · 检索 · 问答 |
+        +-------------------------------------------+
+                  |                   |
+        +---------+---------+---------+---------+
+        |                   |                   |
+   企业 A 部署          企业 B 部署         （同一份代码，各自独立）
+   data/kb.db           data/kb.db
+   data/files/          data/files/
+   业务+账号+向量        业务+账号+向量
+</div>
+
+<p class="noindent">服务本身<strong>零外部依赖</strong>：不需要安装任何 npm 包，不需要单独的数据库服务器，Node.js 22 自带的 SQLite 就是存储引擎。整个系统解压即可运行，这对内网部署和审计合规是决定性的优势。</p>
+
+<h2>五、能力概览</h2>
+
+<table border="1">
+<thead>
+<tr><th style="width:22%">能力</th><th style="width:78%">说明</th></tr>
+</thead>
+<tbody>
+<tr><td>文件格式</td><td>Word、PowerPoint、Excel、PDF、Markdown、纯文本、CSV、HTML、JSON、YAML、日志文件，共 14 种扩展名</td></tr>
+<tr><td>资料入库</td><td>网页拖拽上传、命令行单文件或整目录导入、API 推送，三条路径能力一致</td></tr>
+<tr><td>检索方式</td><td>词法与向量混合检索，可按知识空间、标签、密级过滤；支持关闭向量通道降级为纯词法</td></tr>
+<tr><td>问答模式</td><td>命中标准问答直接返回；配置大模型后生成带引用的答案；未配置时返回原文摘录并标注</td></tr>
+<tr><td>部署形态</td><td>一企一部署：一个数据库文件 + 一个原件目录，进程与文件双重边界</td></tr>
+<tr><td>权限控制</td><td>五角色 × 五职级，文档级密级，API 密钥可设定读取等级上限，支持请求时进一步压低</td></tr>
+<tr><td>管理后台</td><td>概览、文档与密级、成员权限、密钥管理、操作审计、向量索引六个模块</td></tr>
+<tr><td>AI 集成</td><td>MCP 插件提供六个工具，支持按职级过滤，AI Agent 可直接挂载</td></tr>
+<tr><td>可观测</td><td>调用审计、请求追踪标识、检索通道与分项得分、向量库健康状态</td></tr>
+</tbody>
+</table>
+
+<h2>六、当前状态</h2>
+
+<table border="1">
+<thead>
+<tr><th style="width:30%">指标</th><th style="width:70%">实测结果</th></tr>
+</thead>
+<tbody>
+<tr><td>代码规模</td><td>约 6100 行 JavaScript，零第三方运行时依赖</td></tr>
+<tr><td>接口数量</td><td>22 个对外接口，附 OpenAPI 3.1 机器可读契约</td></tr>
+<tr><td>端到端自测</td><td>86 项断言全部通过，覆盖认证、部署形态、权限、检索、上传、向量重建</td></tr>
+<tr><td>检索质量</td><td>标注集上 top-1 准确率 75.0%，recall@5 85.7%，MRR 0.804</td></tr>
+<tr><td>响应延迟</td><td>检索中位延迟 0.6 毫秒，95 分位 2.0 毫秒（不含缓存命中）</td></tr>
+<tr><td>格式验证</td><td>六种主流格式（docx/pptx/xlsx/pdf/md/csv）实测入库成功</td></tr>
+</tbody>
+</table>
+
+<h2>七、从哪里开始</h2>
+
+<table border="1">
+<thead>
+<tr><th style="width:26%">入口</th><th style="width:40%">地址</th><th style="width:34%">用途</th></tr>
+</thead>
+<tbody>
+<tr><td>企业后台</td><td>/admin</td><td>企业管理员登录，管理成员、密钥、文档密级与审计</td></tr>
+<tr><td>检索控制台</td><td>/console</td><td>粘贴密钥即可检索、问答、上传，用于验证与调试</td></tr>
+<tr><td>接口契约</td><td>/openapi.json</td><td>企业对接方直接拉取，可导入 Postman 或生成 SDK</td></tr>
+<tr><td>命令行</td><td>node cli.js</td><td>初始化本企业、签发密钥、批量入库、重建索引</td></tr>
+</tbody>
+</table>
+
+<p class="small" style="text-indent:0; margin-top:16pt;">完整的架构说明、权限矩阵、接口清单与运维手册，见配套文档《企业外置知识库 · 项目说明书》。</p>
+
+</body>
+</html>

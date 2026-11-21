@@ -1,0 +1,12 @@
+# 统一按内容判定，docx/pdf 等按二进制处理，避免行尾转换搞坏文件
+* text=auto
+
+*.docx binary
+*.pdf  binary
+*.xlsx binary
+*.pptx binary
+*.db   binary
+
+# GitHub 语言统计：把 HTML 交付物与文档排除在统计外，主语言显示 JavaScript
+build/*.html linguist-documentation
+docs/*.docx  linguist-generated

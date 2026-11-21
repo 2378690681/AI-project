@@ -1,0 +1,13 @@
+{
+  "_comment": "把这段合并进你的 MCP 客户端配置（WorkBuddy / Claude Desktop / Cursor 通用）。command 与 args 按实际安装路径调整。",
+  "mcpServers": {
+    "kb-hub": {
+      "command": "node",
+      "args": ["/绝对路径/kb-hub/mcp/server.js"],
+      "env": {
+        "KB_BASE_URL": "http://127.0.0.1:7300",
+        "KB_API_KEY": "kb_live_替换成真实密钥"
+      }
+    }
+  }
+}

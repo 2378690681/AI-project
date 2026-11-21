@@ -1,0 +1,23 @@
+# ── 运行时数据：数据库、原始件、向量、审计，全部不入库 ──
+data/
+config.json
+*.db
+*.db-wal
+*.db-shm
+
+# ── 迁移备份与临时产物 ──
+data-backup-*/
+tmp-fixtures/
+.tmp-*/
+tmp/
+
+# ── 编辑器 / 助手工作目录 ──
+.workbuddy/
+.vscode/
+.idea/
+node_modules/
+
+# ── 日志与系统垃圾 ──
+*.log
+.DS_Store
+Thumbs.db

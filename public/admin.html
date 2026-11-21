@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>企业知识库 · 管理后台</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --panel:#ffffff; --ink:#141b2d; --ink-2:#4a5568; --ink-3:#8a94a6;
+    --line:#e3e8f0; --brand:#2b5cf0; --brand-soft:#eef3ff;
+    --ok:#0d9f6e; --ok-soft:#e7f7f1; --warn:#b76e00; --warn-soft:#fff6e5;
+    --danger:#d83b3b; --danger-soft:#fdeded;
+    --radius:12px; --shadow:0 1px 2px rgba(20,27,45,.05),0 8px 24px rgba(20,27,45,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink)}
+  button,input,select{font:inherit;color:inherit}
+  a{color:var(--brand);text-decoration:none}
+  [hidden]{display:none!important}
+
+  /* ---------- 登录 ---------- */
+  #login{min-height:100vh;display:grid;place-items:center;padding:24px;
+    background:radial-gradient(1200px 600px at 20% -10%,#e6edff 0%,transparent 60%),var(--bg)}
+  .login-card{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);
+    border-radius:16px;box-shadow:var(--shadow);padding:32px}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#2b5cf0,#7a9cff);
+    display:grid;place-items:center;color:#fff;font-weight:700;font-size:15px}
+  .brand h1{font-size:17px;margin:0;letter-spacing:.2px}
+  .login-card p.sub{margin:2px 0 22px;color:var(--ink-3);font-size:12.5px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12.5px;color:var(--ink-2);margin-bottom:6px;font-weight:600}
+  .field input,.field select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;
+    background:#fbfcfe;outline:none;transition:.15s}
+  .field input:focus,.field select:focus{border-color:var(--brand);background:#fff;box-shadow:0 0 0 3px rgba(43,92,240,.12)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 16px;border-radius:9px;
+    border:1px solid var(--line);background:#fff;cursor:pointer;font-weight:600;font-size:13px;transition:.15s}
+  .btn:hover{background:#f7f9fd}
+  .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn.primary:hover{background:#1f4cd8}
+  .btn.block{width:100%;padding:11px}
+  .btn.danger{color:var(--danger);border-color:#f2c9c9}
+  .btn.danger:hover{background:var(--danger-soft)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .msg{margin-top:14px;padding:10px 12px;border-radius:9px;font-size:12.5px;display:none}
+  .msg.show{display:block}
+  .msg.err{background:var(--danger-soft);color:var(--danger)}
+  .msg.ok{background:var(--ok-soft);color:var(--ok)}
+  .hint{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line);color:var(--ink-3);font-size:12px}
+
+  /* ---------- 应用骨架 ---------- */
+  #app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+  aside{background:#0f1729;color:#c9d3e6;padding:20px 14px;display:flex;flex-direction:column;gap:6px;
+    position:sticky;top:0;height:100vh}
+  aside .brand{color:#fff;margin-bottom:16px}
+  aside .tenant{padding:10px 12px;background:rgba(255,255,255,.06);border-radius:10px;margin-bottom:12px}
+  aside .tenant .n{color:#fff;font-weight:600;font-size:13.5px}
+  aside .tenant .i{font-size:11.5px;color:#8a97b1;margin-top:2px}
+  nav{display:flex;flex-direction:column;gap:2px}
+  nav button{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:9px;border:0;background:transparent;
+    color:#c9d3e6;cursor:pointer;text-align:left;font-size:13.5px;transition:.15s}
+  nav button:hover{background:rgba(255,255,255,.07);color:#fff}
+  nav button.on{background:var(--brand);color:#fff;font-weight:600}
+  nav .ico{width:18px;text-align:center;opacity:.9}
+  aside .foot{margin-top:auto;border-top:1px solid rgba(255,255,255,.08);padding-top:12px;font-size:12px}
+  aside .who{color:#fff;font-size:13px;font-weight:600}
+  aside .role{color:#8a97b1;font-size:11.5px;margin-bottom:8px}
+  aside .lvl{display:inline-block;background:rgba(122,156,255,.18);color:#a9c1ff;border-radius:6px;
+    padding:1px 7px;font-size:11px;margin-right:4px}
+
+  main{padding:26px 30px 60px;max-width:1180px;width:100%}
+  .head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+  .head h2{margin:0;font-size:20px;letter-spacing:.2px}
+  .head p{margin:4px 0 0;color:var(--ink-3);font-size:12.5px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px}
+  .card + .card{margin-top:16px}
+  .card h3{margin:0 0 4px;font-size:14.5px}
+  .card .desc{color:var(--ink-3);font-size:12.5px;margin:0 0 14px}
+  .grid{display:grid;gap:14px}
+  .grid.k4{grid-template-columns:repeat(4,1fr)}
+  .grid.k3{grid-template-columns:repeat(3,1fr)}
+  .grid.k2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:980px){.grid.k4{grid-template-columns:repeat(2,1fr)}#app{grid-template-columns:1fr}aside{position:static;height:auto}}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+  .stat .k{color:var(--ink-3);font-size:12.5px}
+  .stat .v{font-size:25px;font-weight:700;letter-spacing:-.5px;margin-top:4px}
+  .stat .x{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.err{background:var(--danger-soft);color:var(--danger)}
+  .pill.mute{background:#eef1f6;color:var(--ink-2)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{color:var(--ink-3);font-weight:600;font-size:12px;background:#fafbfe;position:sticky;top:0}
+  tbody tr:hover{background:#fafbfe}
+  .table-wrap{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:10px}
+  .muted{color:var(--ink-3)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .toolbar input[type=search],.toolbar select{padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:#fbfcfe;min-width:150px}
+  .toolbar input[type=search]{min-width:240px}
+  select.mini{padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:12.5px}
+  .empty{padding:28px;text-align:center;color:var(--ink-3);font-size:13px}
+  .toast{position:fixed;right:22px;bottom:22px;background:#141b2d;color:#fff;padding:11px 16px;border-radius:10px;
+    font-size:13px;box-shadow:var(--shadow);opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none;z-index:50}
+  .toast.show{opacity:1;transform:none}
+  .secret{background:#0f1729;color:#a9c1ff;padding:10px 12px;border-radius:9px;font-family:ui-monospace,Consolas,monospace;
+    font-size:12.5px;word-break:break-all;margin-top:10px}
+  .matrix td,.matrix th{font-size:12.5px}
+  .matrix .yes{color:var(--ok);font-weight:700}
+  .matrix .no{color:#c3cad8}
+  .kv{display:grid;grid-template-columns:130px 1fr;gap:6px 12px;font-size:13px}
+  .kv .k{color:var(--ink-3)}
+  .bar{height:6px;border-radius:999px;background:#eef1f6;overflow:hidden;margin-top:6px}
+  .bar > i{display:block;height:100%;background:var(--brand)}
+</style>
+</head>
+<body>
+
+<!-- ============ 登录 ============ -->
+<div id="login">
+  <form class="login-card" id="loginForm" autocomplete="off">
+    <div class="brand">
+      <div class="logo">KB</div>
+      <h1>企业知识库 · 管理后台</h1>
+    </div>
+    <p class="sub">用企业管理员账号登录。一个企业一套服务、一个数据库文件，账号仅能管理本企业数据。</p>
+    <div class="field">
+      <label for="email">邮箱</label>
+      <input id="email" name="email" type="email" placeholder="you@company.com" required>
+    </div>
+    <div class="field">
+      <label for="password">密码</label>
+      <input id="password" name="password" type="password" placeholder="至少 8 位，含字母与数字" required>
+    </div>
+    <div class="field">
+      <label for="tenant">企业标识（可选）</label>
+      <input id="tenant" name="tenant" placeholder="如 t_acme；多个企业用同一邮箱时需填">
+    </div>
+    <button class="btn primary block" id="loginBtn" type="submit">登录</button>
+    <div class="msg" id="loginMsg"></div>
+    <div class="hint">
+      没有账号？由企业负责人在「成员」里添加，或用命令行创建：<br>
+      <span class="mono">node cli.js admin:create t_xxx you@company.com --role admin --level 3</span>
+    </div>
+  </form>
+</div>
+
+<!-- ============ 后台 ============ -->
+<div id="app" hidden>
+  <aside>
+    <div class="brand">
+      <div class="logo">KB</div>
+      <div>
+        <div style="color:#fff;font-weight:700;font-size:13.5px">企业知识库</div>
+        <div style="font-size:11px;color:#8a97b1">管理后台</div>
+      </div>
+    </div>
+    <div class="tenant">
+      <div class="n" id="sideTenant">—</div>
+      <div class="i" id="sideTenantMeta">—</div>
+    </div>
+    <nav id="nav">
+      <button data-view="overview" class="on"><span class="ico">◎</span>概览</button>
+      <button data-view="docs"><span class="ico">▤</span>文档与密级</button>
+      <button data-view="members"><span class="ico">◍</span>成员权限</button>
+      <button data-view="keys"><span class="ico">⚿</span>API 密钥</button>
+      <button data-view="audit"><span class="ico">≡</span>操作审计</button>
+      <button data-view="vectors"><span class="ico">◇</span>向量索引</button>
+    </nav>
+    <div class="foot">
+      <div class="who" id="sideUser">—</div>
+      <div class="role" id="sideRole">—</div>
+      <button class="btn" style="width:100%;background:transparent;color:#c9d3e6;border-color:rgba(255,255,255,.15)" id="logoutBtn">退出登录</button>
+    </div>
+  </aside>
+
+  <main>
+    <!-- 概览 -->
+    <section id="view-overview">
+      <div class="head">
+        <div><h2>概览</h2><p id="ovSub">—</p></div>
+        <button class="btn" id="refreshBtn">刷新</button>
+      </div>
+      <div class="grid k4" id="ovStats"></div>
+      <div class="grid k2" style="margin-top:16px">
+        <div class="card">
+          <h3>存储与索引</h3>
+          <p class="desc">原文、倒排、向量都在本企业自己的目录里。</p>
+          <div class="kv" id="ovStore"></div>
+        </div>
+        <div class="card">
+          <h3>最近操作</h3>
+          <p class="desc">仅本企业可见。</p>
+          <div id="ovRecent"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 文档 -->
+    <section id="view-docs" hidden>
+      <div class="head">
+        <div><h2>文档与密级</h2><p>密级决定谁能检索到：员工等级 ≥ 文档密级才可见。</p></div>
+      </div>
+      <div class="card">
+        <div class="toolbar">
+          <input type="search" id="docQ" placeholder="按标题搜索…">
+          <select id="docSpace"><option value="">全部空间</option></select>
+          <select id="docLevelFilter">
+            <option value="">全部密级</option>
+            <option value="1">公开</option><option value="2">内部</option>
+            <option value="3">部门</option><option value="4">管理</option><option value="5">机密</option>
+          </select>
+          <span class="muted" id="docCount"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th style="min-width:240px">标题</th><th>空间</th><th>类型</th><th>块</th>
+              <th>密级</th><th>上传人</th><th>更新时间</th><th style="width:120px">操作</th>
+            </tr></thead>
+            <tbody id="docRows"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="docEmpty" hidden>没有匹配的文档</div>
+      </div>
+    </section>
+
+    <!-- 成员 -->
+    <section id="view-members" hidden>
+      <div class="head">
+        <div><h2>成员权限</h2><p>角色决定能做什么，员工等级决定能看什么，两者分开配置。</p></div>
+      </div>
+      <div class="grid k2">
+        <div class="card">
+          <h3>成员列表</h3>
+          <p class="desc" id="memberDesc">—</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>成员</th><th>角色</th><th>等级</th><th>状态</th><th></th></tr></thead>
+              <tbody id="memberRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <h3>新增成员</h3>
+          <p class="desc">不填密码则自动生成初始密码，只在创建后显示一次。</p>
+          <div class="field"><label>邮箱</label><input id="mEmail" placeholder="name@company.com"></div>
+          <div class="field"><label>姓名</label><input id="mName" placeholder="张三"></div>
+          <div class="grid k2">
+            <div class="field"><label>角色</label><select id="mRole"></select></div>
+            <div class="field"><label>员工等级</label><select id="mLevel"></select></div>
+          </div>
+          <div class="field"><label>部门（可选）</label><input id="mDept" placeholder="研发中心"></div>
+          <button class="btn primary" id="mAdd">创建账号</button>
+          <div id="mResult"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3>角色权限矩阵</h3>
+        <p class="desc">服务端逐条校验，前端隐藏只是减少误操作。</p>
+        <div class="table-wrap"><table class="matrix" id="matrix"></table></div>
+      </div>
+    </section>
+
+    <!-- 密钥 -->
+    <section id="view-keys" hidden>
+      <div class="head">
+        <div><h2>API 密钥</h2><p>给企业系统对接用。密钥带可读等级，不会被用来越级读取机密文档。</p></div>
+      </div>
+      <div class="grid k2">
+        <div class="card">
+          <h3>现有密钥</h3>
+          <p class="desc">明文只在创建时返回一次，这里只能看到前缀。</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>名称</th><th>前缀</th><th>权限</th><th>可读等级</th><th>最近使用</th><th></th></tr></thead>
+              <tbody id="keyRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <h3>新建密钥</h3>
+          <p class="desc">按最小权限原则只勾选需要的 scope。</p>
+          <div class="field"><label>名称</label><input id="kName" placeholder="订单系统对接"></div>
+          <div class="field"><label>权限范围</label>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">
+              <label style="font-weight:400"><input type="checkbox" value="search" checked> search</label>
+              <label style="font-weight:400"><input type="checkbox" value="read" checked> read</label>
+              <label style="font-weight:400"><input type="checkbox" value="write"> write</label>
+              <label style="font-weight:400"><input type="checkbox" value="admin"> admin</label>
+            </div>
+          </div>
+          <div class="field"><label>可读文档等级上限</label><select id="kLevel"></select></div>
+          <button class="btn primary" id="kAdd">生成密钥</button>
+          <div id="kResult"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 审计 -->
+    <section id="view-audit" hidden>
+      <div class="head"><div><h2>操作审计</h2><p>谁在什么时候查了什么、改了什么。</p></div></div>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>时间</th><th>操作者</th><th>动作</th><th>对象</th><th>结果</th><th>耗时</th><th>IP</th></tr></thead>
+            <tbody id="auditRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 向量 -->
+    <section id="view-vectors" hidden>
+      <div class="head">
+        <div><h2>向量索引</h2><p>向量存在本企业数据库的 vectors 表里，与原文同库。换模型后点右侧重建即可，不影响原文与倒排索引。</p></div>
+        <button class="btn primary" id="vecRebuild">重建本企业向量</button>
+      </div>
+      <div class="grid k2">
+        <div class="card">
+          <h3>当前状态</h3>
+          <p class="desc" id="vecDesc">—</p>
+          <div class="kv" id="vecKv"></div>
+        </div>
+        <div class="card">
+          <h3>检索权重</h3>
+          <p class="desc">词法优先、向量补召回。可在 config.json 的 retrieval 里调整。</p>
+          <div class="kv">
+            <div class="k">混合模式</div><div>0.7 × 词法 + 0.3 × 向量</div>
+            <div class="k">纯词法</div><div>请求体传 <span class="mono">"plain": true</span></div>
+            <div class="k">关闭向量</div><div>请求体传 <span class="mono">"vector": false</span></div>
+            <div class="k">向量维度</div><div>本地模型 256 维；配置 embeddings 后可切 768/1024</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+  const state = {
+    me: null,
+    levels: [],
+    docLevels: [],
+    roles: [],
+    view: 'overview',
+    docs: [],
+    spaces: [],
+    members: [],
+  };
+
+  const LEVEL_COLOR = { 1: 'mute', 2: 'ok', 3: 'warn', 4: 'err', 5: 'err' };
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
+  function toast(text, bad) {
+    const el = $('#toast');
+    el.textContent = text;
+    el.style.background = bad ? '#d83b3b' : '#141b2d';
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.remove('show'), 2600);
+  }
+
+  async function api(path, opts = {}) {
+    const res = await fetch('/admin/api' + path, {
+      method: opts.method || 'GET',
+      credentials: 'same-origin',
+      headers: opts.body ? { 'Content-Type': 'application/json' } : {},
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    const ct = res.headers.get('content-type') || '';
+    const data = ct.includes('json') ? await res.json() : null;
+    if (!res.ok) {
+      if (res.status === 401 && path !== '/login') showLogin('登录已过期，请重新登录');
+      throw new Error(data?.error?.message || ('请求失败 ' + res.status));
+    }
+    return data;
+  }
+
+  function can(perm) {
+    const p = state.me?.user?.permissions || [];
+    return p.includes('*') || p.includes(perm);
+  }
+
+  function showLogin(msg) {
+    $('#app').hidden = true;
+    $('#login').hidden = false;
+    if (msg) {
+      const el = $('#loginMsg');
+      el.textContent = msg;
+      el.className = 'msg err show';
+    }
+  }
+
+  function showApp() {
+    $('#login').hidden = true;
+    $('#app').hidden = false;
+    const u = state.me.user;
+    $('#sideTenant').textContent = state.me.tenant.name;
+    $('#sideTenantMeta').textContent = state.me.tenant.id + ' · ' + (state.me.tenant.plan || 'standard');
+    $('#sideUser').textContent = u.name + ' · ' + u.email;
+    $('#sideRole').innerHTML = '<span class="lvl">L' + u.level + ' ' + esc(u.level_name) + '</span>' + esc(u.role_name);
+    // 无权限的入口直接隐藏
+    const need = { members: 'member.read', keys: 'key.read', audit: 'audit.read' };
+    for (const [view, perm] of Object.entries(need)) {
+      const btn = $('nav button[data-view="' + view + '"]');
+      if (btn) btn.hidden = !can(perm);
+    }
+    switchView('overview');
+  }
+
+  // ---------------- 登录 ----------------
+  $('#loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('#loginBtn');
+    const box = $('#loginMsg');
+    btn.disabled = true;
+    try {
+      await api('/login', {
+        method: 'POST',
+        body: {
+          email: $('#email').value.trim(),
+          password: $('#password').value,
+          tenant: $('#tenant').value.trim() || undefined,
+        },
+      });
+      await boot();
+    } catch (err) {
+      box.textContent = err.message;
+      box.className = 'msg err show';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('#logoutBtn').addEventListener('click', async () => {
+    try { await api('/logout', { method: 'POST' }); } catch (e) { /* ignore */ }
+    state.me = null;
+    showLogin('已退出登录');
+  });
+
+  // ---------------- 导航 ----------------
+  $('#nav').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-view]');
+    if (btn) switchView(btn.dataset.view);
+  });
+
+  function switchView(view) {
+    state.view = view;
+    for (const b of $$('#nav button[data-view]')) b.classList.toggle('on', b.dataset.view === view);
+    for (const s of $$('main > section')) s.hidden = s.id !== 'view-' + view;
+    if (view === 'overview') loadOverview();
+    if (view === 'docs') loadDocs();
+    if (view === 'members') loadMembers();
+    if (view === 'keys') loadKeys();
+    if (view === 'audit') loadAudit();
+    if (view === 'vectors') loadVectors();
+  }
+
+  $('#refreshBtn').addEventListener('click', loadOverview);
+
+  // ---------------- 概览 ----------------
+  async function loadOverview() {
+    try {
+      const d = await api('/overview');
+      const c = d.corpus, v = d.vectors, s = d.storage;
+      $('#ovSub').textContent = d.tenant.name + ' · 单实例部署，数据在 ' + (v.file || '');
+      const cards = [
+        ['文档', c.documents, c.parse_failed ? c.parse_failed + ' 篇解析失败' : '全部已解析'],
+        ['知识块', c.chunks, '平均 ' + c.avg_chunk_terms + ' 词/块'],
+        ['向量', v.chunks, v.model ? (v.stale ? '模型已变更，需重建' : v.dim + ' 维 · ' + v.model) : '尚未建立'],
+        ['原始件', s.files, s.mb + ' MB'],
+        ['成员', d.members.length, '含负责人 ' + d.members.filter((m) => m.role === 'owner').length + ' 人'],
+        ['API 密钥', d.keys.filter((k) => !k.revoked_at).length, '已吊销 ' + d.keys.filter((k) => k.revoked_at).length + ' 个'],
+        ['FAQ', c.faqs, '命中优先于文档检索'],
+        ['缓存命中率', Math.round((d.cache.search.hit_rate || 0) * 100) + '%', d.cache.search.size + ' 条在缓存'],
+      ];
+      $('#ovStats').innerHTML = cards.map(([k, val, x]) => (
+        '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v">' + esc(val) + '</div><div class="x">' + esc(x) + '</div></div>'
+      )).join('');
+
+      $('#ovStore').innerHTML = [
+        ['数据库', '<span class="mono">' + esc(v.file || '') + '</span>'],
+        ['向量表', '<span class="mono">vectors（与原文同库）</span>'],
+        ['原始件', '<span class="mono">' + esc((s.dir || '').replace(/^.*data/, 'data')) + '</span>'],
+        ['部署形态', '<span class="pill ok">单实例独立部署</span>'],
+        ['向量状态', v.chunks ? (v.stale ? '<span class="pill warn">需重建</span>' : '<span class="pill ok">已就绪</span>') : '<span class="pill mute">未建立</span>'],
+      ].map(([k, val]) => '<div class="k">' + esc(k) + '</div><div>' + val + '</div>').join('');
+
+      $('#ovRecent').innerHTML = d.recent.length
+        ? '<table><tbody>' + d.recent.map((r) => (
+            '<tr><td class="mono">' + esc(String(r.created_at).slice(5, 16).replace('T', ' ')) + '</td>'
+            + '<td>' + esc(r.actor || '—') + '</td><td>' + esc(r.action) + '</td>'
+            + '<td><span class="pill ' + (r.status < 400 ? 'ok' : 'err') + '">' + r.status + '</span></td></tr>'
+          )).join('') + '</tbody></table>'
+        : '<div class="empty">暂无操作记录</div>';
+    } catch (e) { toast(e.message, true); }
+  }
+
+  // ---------------- 文档 ----------------
+  async function loadDocs() {
+    try {
+      const [spaces, docs] = await Promise.all([
+        api('/spaces'),
+        api('/documents?limit=200' + ($('#docQ').value ? '&q=' + encodeURIComponent($('#docQ').value) : '')
+          + ($('#docSpace').value ? '&space_id=' + encodeURIComponent($('#docSpace').value) : '')),
+      ]);
+      state.spaces = spaces.items || [];
+      state.docs = docs.items || [];
+      if ($('#docSpace').options.length <= 1) {
+        $('#docSpace').innerHTML = '<option value="">全部空间</option>' + state.spaces.map((s) => (
+          '<option value="' + esc(s.id) + '">' + esc(s.name) + '（' + s.doc_count + '）</option>'
+        )).join('');
+      }
+      renderDocs();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  function renderDocs() {
+    const rows = state.docs;
+    $('#docCount').textContent = '共 ' + rows.length + ' 篇（受你的等级 L' + (state.me.user.level) + ' 限制）';
+    $('#docEmpty').hidden = rows.length > 0;
+    const lvlName = (n) => (state.docLevels.find((l) => l.level === Number(n)) || {}).name || ('L' + n);
+    $('#docRows').innerHTML = rows.map((d) => {
+      const levelSel = can('doc.level') && Number(d.min_level) <= Number(state.me.user.level)
+        ? '<select class="mini" data-lvl="' + esc(d.id) + '">' + state.docLevels.map((l) => (
+            '<option value="' + l.level + '"' + (Number(l.level) === Number(d.min_level) ? ' selected' : '') + '>'
+            + esc(l.name) + '</option>'
+          )).join('') + '</select>'
+        : '<span class="pill ' + (LEVEL_COLOR[Number(d.min_level)] || 'mute') + '">' + esc(lvlName(d.min_level)) + '</span>';
+      const dl = d.file_id ? '<a href="/admin/api/documents/' + esc(d.id) + '/file">下载</a>' : '<span class="muted">—</span>';
+      const del = can('doc.delete') && Number(d.min_level) <= Number(state.me.user.level)
+        ? '<button class="btn danger" style="padding:3px 9px" data-del="' + esc(d.id) + '">删除</button>'
+        : '';
+      return '<tr>'
+        + '<td><div style="font-weight:600">' + esc(d.title) + '</div>'
+        + (d.parse_status === 'failed' ? '<div class="pill err" style="margin-top:3px">解析失败，原件已保留</div>' : '')
+        + '</td>'
+        + '<td class="muted">' + esc((state.spaces.find((s) => s.id === d.space_id) || {}).name || '—') + '</td>'
+        + '<td class="mono muted">' + esc(d.doc_type) + '</td>'
+        + '<td>' + d.chunk_count + '</td>'
+        + '<td>' + levelSel + '</td>'
+        + '<td class="muted">' + esc(d.uploader || '—') + '</td>'
+        + '<td class="muted mono">' + esc(String(d.updated_at).slice(0, 10)) + '</td>'
+        + '<td style="white-space:nowrap">' + dl + ' ' + del + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  $('#docQ').addEventListener('input', debounce(loadDocs, 300));
+  $('#docSpace').addEventListener('change', loadDocs);
+  $('#docLevelFilter').addEventListener('change', (e) => {
+    const v = e.target.value;
+    state.docs = (state.docs || []).filter((d) => !v || Number(d.min_level) === Number(v));
+    renderDocs();
+  });
+
+  $('#docRows').addEventListener('change', async (e) => {
+    const sel = e.target.closest('select[data-lvl]');
+    if (!sel) return;
+    try {
+      const doc = await api('/documents/' + sel.dataset.lvl, { method: 'PATCH', body: { min_level: Number(sel.value) } });
+      toast('已设为「' + ((state.docLevels.find((l) => l.level === Number(doc.min_level)) || {}).name || doc.min_level) + '」');
+    } catch (err) { toast(err.message, true); loadDocs(); }
+  });
+
+  $('#docRows').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-del]');
+    if (!btn) return;
+    const doc = state.docs.find((d) => d.id === btn.dataset.del);
+    if (!confirm('删除《' + (doc?.title || '') + '》？\n文档、知识块、向量都会移除；原始件保留在磁盘上。')) return;
+    try {
+      await api('/documents/' + btn.dataset.del, { method: 'DELETE' });
+      toast('已删除');
+      loadDocs();
+    } catch (err) { toast(err.message, true); }
+  });
+
+  // ---------------- 成员 ----------------
+  async function loadMembers() {
+    try {
+      const d = await api('/members');
+      state.members = d.items || [];
+      $('#memberDesc').textContent = state.members.length + ' 个账号 · 你的等级 L' + state.me.user.level;
+      if (!$('#mRole').options.length) {
+        $('#mRole').innerHTML = state.roles.map((r) => '<option value="' + esc(r.key) + '">' + esc(r.name) + '</option>').join('');
+        $('#mLevel').innerHTML = state.levels.map((l) => '<option value="' + l.level + '"' + (l.level === 1 ? ' selected' : '') + '>L' + l.level + ' ' + esc(l.name) + '</option>').join('');
+        $('#kLevel').innerHTML = state.levels.map((l) => '<option value="' + l.level + '"' + (l.level === Number(state.me.user.level) ? ' selected' : '') + '>L' + l.level + ' ' + esc(l.name) + '</option>').join('');
+        renderMatrix();
+      }
+      const canWrite = can('member.write') || can('member.invite');
+      $('#memberRows').innerHTML = state.members.map((m) => {
+        const editable = canWrite && m.id !== state.me.user.id;
+        const roleCell = editable
+          ? '<select class="mini" data-role="' + esc(m.id) + '">' + state.roles.map((r) => (
+              '<option value="' + r.key + '"' + (r.key === m.role ? ' selected' : '') + '>' + esc(r.name) + '</option>'
+            )).join('') + '</select>'
+          : esc(m.role_name);
+        const lvlCell = editable
+          ? '<select class="mini" data-level="' + esc(m.id) + '">' + state.levels.map((l) => (
+              '<option value="' + l.level + '"' + (l.level === m.level ? ' selected' : '') + '>L' + l.level + '</option>'
+            )).join('') + '</select>'
+          : 'L' + m.level;
+        const del = canWrite && m.id !== state.me.user.id
+          ? '<button class="btn danger" style="padding:2px 8px" data-del-member="' + esc(m.id) + '">删除</button>' : '';
+        return '<tr><td><div style="font-weight:600">' + esc(m.name) + '</div><div class="muted mono" style="font-size:11.5px">'
+          + esc(m.email) + '</div></td><td>' + roleCell + '</td><td>' + lvlCell + '</td>'
+          + '<td><span class="pill ' + (m.status === 'active' ? 'ok' : 'mute') + '">' + esc(m.status === 'active' ? '正常' : '停用') + '</span></td>'
+          + '<td>' + del + '</td></tr>';
+      }).join('');
+    } catch (e) { toast(e.message, true); }
+  }
+
+  function renderMatrix() {
+    const perms = ['doc.read', 'doc.write', 'doc.delete', 'doc.level', 'member.write', 'key.write', 'audit.read', 'vector.rebuild'];
+    const labels = { 'doc.read': '查看文档', 'doc.write': '上传/编辑', 'doc.delete': '删除文档', 'doc.level': '调整密级', 'member.write': '管理成员', 'key.write': '签发密钥', 'audit.read': '查看审计', 'vector.rebuild': '重建向量' };
+    $('#matrix').innerHTML = '<thead><tr><th>角色</th>' + perms.map((p) => '<th>' + labels[p] + '</th>').join('') + '</tr></thead><tbody>'
+      + state.roles.map((r) => '<tr><td><b>' + esc(r.name) + '</b><div class="muted" style="font-size:11.5px">' + esc(r.desc || '') + '</div></td>'
+        + perms.map((p) => {
+            const ok = r.perms.includes('*') || r.perms.includes(p);
+            return '<td class="' + (ok ? 'yes' : 'no') + '">' + (ok ? '✓' : '·') + '</td>';
+          }).join('') + '</tr>').join('') + '</tbody>';
+  }
+
+  $('#memberRows').addEventListener('change', async (e) => {
+    const roleSel = e.target.closest('select[data-role]');
+    const lvlSel = e.target.closest('select[data-level]');
+    try {
+      if (roleSel) {
+        await api('/members/' + roleSel.dataset.role, { method: 'PATCH', body: { role: roleSel.value } });
+        toast('角色已更新');
+      } else if (lvlSel) {
+        await api('/members/' + lvlSel.dataset.level, { method: 'PATCH', body: { level: Number(lvlSel.value) } });
+        toast('员工等级已更新');
+      }
+      loadMembers();
+    } catch (err) { toast(err.message, true); loadMembers(); }
+  });
+
+  $('#memberRows').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-del-member]');
+    if (!btn) return;
+    if (!confirm('删除该成员？其所有登录会话会立即失效。')) return;
+    try {
+      await api('/members/' + btn.dataset.delMember, { method: 'DELETE' });
+      toast('已删除');
+      loadMembers();
+    } catch (err) { toast(err.message, true); }
+  });
+
+  $('#mAdd').addEventListener('click', async () => {
+    const body = {
+      email: $('#mEmail').value.trim(),
+      name: $('#mName').value.trim(),
+      role: $('#mRole').value,
+      level: Number($('#mLevel').value),
+      department: $('#mDept').value.trim() || null,
+    };
+    if (!body.email) return toast('请填写邮箱', true);
+    try {
+      const r = await api('/members', { method: 'POST', body });
+      $('#mResult').innerHTML = '<div class="msg ok show">已创建 ' + esc(r.user.email) + '</div>'
+        + (r.initial_password
+          ? '<div class="secret">初始密码：' + esc(r.initial_password) + '</div><div class="muted" style="font-size:11.5px;margin-top:6px">只显示这一次，请让本人首次登录后修改。</div>'
+          : '');
+      $('#mEmail').value = ''; $('#mName').value = ''; $('#mDept').value = '';
+      loadMembers();
+    } catch (err) { toast(err.message, true); }
+  });
+
+  // ---------------- 密钥 ----------------
+  async function loadKeys() {
+    try {
+      const d = await api('/keys');
+      const items = d.items || [];
+      $('#keyRows').innerHTML = items.length ? items.map((k) => (
+        '<tr><td>' + esc(k.name || '—') + '</td><td class="mono">' + esc(k.key_prefix) + '</td>'
+        + '<td class="mono">' + (k.scopes || []).join(',') + '</td><td>L' + (k.reader_level || 5) + '</td>'
+        + '<td class="muted">' + esc(k.last_used_at ? String(k.last_used_at).slice(0, 16).replace('T', ' ') : '未使用') + '</td>'
+        + '<td>' + (k.revoked_at ? '<span class="pill mute">已吊销</span>'
+          : (can('key.write') ? '<button class="btn danger" style="padding:2px 8px" data-revoke="' + esc(k.id) + '">吊销</button>' : '')) + '</td></tr>'
+      )).join('') : '<tr><td colspan="6" class="empty">还没有密钥</td></tr>';
+    } catch (e) { toast(e.message, true); }
+  }
+
+  $('#keyRows').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-revoke]');
+    if (!btn) return;
+    if (!confirm('吊销后使用该密钥的系统会立即失去访问权限，确认？')) return;
+    try {
+      await api('/keys/' + btn.dataset.revoke, { method: 'DELETE' });
+      toast('已吊销');
+      loadKeys();
+    } catch (err) { toast(err.message, true); }
+  });
+
+  $('#kAdd').addEventListener('click', async () => {
+    const scopes = $$('#view-keys input[type=checkbox]:checked').map((c) => c.value);
+    if (!scopes.length) return toast('至少选择一个权限', true);
+    try {
+      const r = await api('/keys', {
+        method: 'POST',
+        body: { name: $('#kName').value.trim() || '未命名密钥', scopes, reader_level: Number($('#kLevel').value) },
+      });
+      $('#kResult').innerHTML = '<div class="secret">' + esc(r.plaintext) + '</div>'
+        + '<div class="muted" style="font-size:11.5px;margin-top:6px">密钥只显示这一次，请立即保存。</div>';
+      $('#kName').value = '';
+      loadKeys();
+    } catch (err) { toast(err.message, true); }
+  });
+
+  // ---------------- 审计 ----------------
+  async function loadAudit() {
+    try {
+      const d = await api('/audit?limit=200');
+      const items = d.items || [];
+      $('#auditRows').innerHTML = items.length ? items.map((r) => (
+        '<tr><td class="mono muted">' + esc(String(r.created_at).slice(0, 19).replace('T', ' ')) + '</td>'
+        + '<td>' + esc(r.actor || '—') + '</td><td class="mono">' + esc(r.action) + '</td>'
+        + '<td class="muted mono">' + esc(r.target || '—') + '</td>'
+        + '<td><span class="pill ' + (r.status < 400 ? 'ok' : 'err') + '">' + r.status + '</span></td>'
+        + '<td class="muted">' + r.latency_ms + 'ms</td><td class="muted mono">' + esc(r.ip || '—') + '</td></tr>'
+      )).join('') : '<tr><td colspan="7" class="empty">暂无审计记录</td></tr>';
+    } catch (e) { toast(e.message, true); }
+  }
+
+  // ---------------- 向量 ----------------
+  async function loadVectors() {
+    try {
+      const v = await api('/vectors');
+      $('#vecDesc').textContent = v.chunks
+        ? '本企业 ' + v.chunks + ' 个知识块已向量化。'
+        : '尚未建立向量索引，检索会退化为纯词法。点右上角重建即可。';
+      $('#vecKv').innerHTML = [
+        ['向量条数', v.chunks],
+        ['维度', v.dim || '—'],
+        ['模型', v.model || '—'] + (v.stale ? ' <span class="pill warn">与当前模型不一致</span>' : ''),
+        ['占用空间', (v.bytes / 1048576).toFixed(2) + ' MB'],
+        ['文件', '<span class="mono">' + esc((v.file || '').replace(/^.*data/, 'data')) + '</span>'],
+        ['当前模型', v.current_model],
+      ].map(([k, val]) => '<div class="k">' + esc(k) + '</div><div>' + val + '</div>').join('');
+    } catch (e) { toast(e.message, true); }
+  }
+
+  $('#vecRebuild').addEventListener('click', async () => {
+    if (!confirm('重建会先清空本企业的向量再全量重建，期间检索仍可用（走词法）。继续？')) return;
+    const btn = $('#vecRebuild');
+    btn.disabled = true;
+    btn.textContent = '重建中…';
+    try {
+      const r = await api('/vectors/rebuild', { method: 'POST' });
+      toast('已重建 ' + r.vectors + ' 个块的向量');
+      loadVectors();
+    } catch (e) { toast(e.message, true); }
+    finally { btn.disabled = false; btn.textContent = '重建本企业向量'; }
+  });
+
+  function debounce(fn, ms) {
+    let t;
+    return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+  }
+
+  // ---------------- 启动 ----------------
+  async function boot() {
+    try {
+      const me = await api('/me');
+      state.me = me;
+      state.levels = me.levels || [];
+      state.docLevels = me.doc_levels || [];
+      state.roles = me.roles || [];
+      showApp();
+      if (me.user.must_change) {
+        toast('当前为初始密码，建议在「成员」里重置后再使用');
+      }
+    } catch (e) {
+      showLogin(e.message === '未登录或登录已过期' ? null : e.message);
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

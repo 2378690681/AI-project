@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>企业外置知识库 · 项目说明书</title>
+<style>
+  body { font-family: "宋体", SimSun, serif; font-size: 11pt; line-height: 1.75; color: #1a1a1a; }
+  h1 { font-family: "黑体", SimHei, sans-serif; font-size: 24pt; text-align: center; margin: 0 0 8pt; }
+  h2 { font-family: "黑体", SimHei, sans-serif; font-size: 15pt; margin: 26pt 0 10pt; border-left: 5px solid #2f5d8a; padding-left: 9pt; }
+  h3 { font-family: "黑体", SimHei, sans-serif; font-size: 12.5pt; margin: 16pt 0 7pt; color: #1f4467; }
+  h4 { font-family: "黑体", SimHei, sans-serif; font-size: 11pt; margin: 12pt 0 5pt; }
+  p { margin: 0 0 8pt; text-indent: 2em; }
+  p.noindent { text-indent: 0; }
+  .cover { text-align: center; margin: 60pt 0 30pt; }
+  .cover .sub { font-size: 12pt; color: #444; margin-bottom: 4pt; text-indent: 0; }
+  .cover .meta { font-size: 10pt; color: #666; text-indent: 0; margin-top: 30pt; }
+  .lead { font-size: 11pt; background: #f5f8fb; border-left: 4px solid #2f5d8a; padding: 10pt 14pt; margin: 10pt 0 16pt; text-indent: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8pt 0 12pt; font-size: 10pt; }
+  th { background: #eef2f7; font-family: "黑体", SimHei, sans-serif; border: 1px solid #b9c5d3; padding: 6pt 7pt; text-align: left; vertical-align: top; }
+  td { border: 1px solid #c8d2de; padding: 6pt 7pt; vertical-align: top; }
+  ul, ol { margin: 0 0 10pt; padding-left: 22pt; }
+  li { margin-bottom: 4pt; }
+  pre { font-family: "Consolas", "Courier New", monospace; font-size: 9pt; line-height: 1.5;
+        border: 1px solid #d4dbe3; background: #fafbfc; padding: 9pt 11pt; margin: 8pt 0 12pt; white-space: pre-wrap; }
+  code { font-family: "Consolas", "Courier New", monospace; font-size: 9.5pt; background: #f2f4f7; padding: 0 3pt; }
+  .box { border: 1px solid #2f5d8a; background: #f5f8fb; padding: 9pt 13pt; margin: 10pt 0; }
+  .box p { text-indent: 0; margin: 0 0 4pt; }
+  .warn { border: 1px solid #b06a1f; background: #fdf7ef; padding: 9pt 13pt; margin: 10pt 0; }
+  .warn p { text-indent: 0; margin: 0 0 4pt; }
+  .small { font-size: 9.5pt; color: #555; }
+  .kv { font-family: "黑体", SimHei, sans-serif; }
+  .center { text-align: center; }
+  .toc p { text-indent: 0; margin: 0 0 3pt; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+<h1>企业外置知识库</h1>
+<p class="sub">KB Hub · 完整项目说明书</p>
+<p class="sub" style="font-size:10.5pt; color:#777;">架构 · 隔离 · 权限 · 检索 · 接口 · 运维</p>
+<p class="meta">版本 1.0　|　适用系统 KB Hub 0.2　|　编制日期 2026 年 11 月</p>
+</div>
+
+<h2>目录</h2>
+<div class="toc">
+<p>1　项目概述</p>
+<p>2　系统架构</p>
+<p>3　单实例部署与数据文件</p>
+<p>4　权限模型</p>
+<p>5　资料入库</p>
+<p>6　检索与问答</p>
+<p>7　快速上手</p>
+<p>8　使用手册</p>
+<p>9　接口说明</p>
+<p>10　MCP 插件</p>
+<p>11　运维手册</p>
+<p>12　评测与验证</p>
+<p>13　已知限制</p>
+<p>14　后续规划</p>
+</div>
+
+<h2>1　项目概述</h2>
+
+<h3>1.1 项目定位</h3>
+
+<p>企业外置知识库（下称"知识库"）是一套可独立部署的知识服务，供多个企业项目同时接入。它把企业内部分散的文档、制度、手册、问答对收拢为统一的检索层，并以两种标准化方式对外提供能力：</p>
+
+<ul>
+<li><strong>REST API</strong>：企业业务系统、内部工具直接调用，无需了解内部实现。</li>
+<li><strong>MCP 插件</strong>：以 Model Context Protocol 标准接入 AI Agent，Agent 可以直接"查资料"。</li>
+</ul>
+
+<p class="noindent">两条通道共用同一套服务端逻辑，因此同一个问题通过 REST 和通过 AI Agent 得到的检索结果完全一致，不存在两套索引各自为政的问题。</p>
+
+<h3>1.2 项目起源与要解决的问题</h3>
+
+<p>项目的出发点是三个具体的业务诉求：企业员工上传内部资料之后，如何<strong>完整保存</strong>、如何<strong>准确检索</strong>、如何<strong>快速回答</strong>。这三个诉求对应三套独立机制，缺一不可。</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:16%">诉求</th><th style="width:42%">失败模式</th><th style="width:42%">对应机制</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>完整保存</td>
+<td>先解析再决定存不存，解析失败即丢失原件；文档改版后覆盖旧版，无法追溯历史。</td>
+<td>原始件先落盘、按内容哈希去重、解析失败仍入库并标记状态、每次变更写版本记录。</td>
+</tr>
+<tr>
+<td>准确检索</td>
+<td>纯关键词匹配，词对上但语义不对；长文档切块过粗，命中段落包含无关内容。</td>
+<td>BM25 叠加四项语义加权，融合向量召回；按标题层级切块，命中后向相邻块扩展上下文。</td>
+</tr>
+<tr>
+<td>快速回答</td>
+<td>直接让大模型读片段作答，无依据时编造；每次提问都重新走完整链路。</td>
+<td>FAQ 前置直答、结果缓存、抽取式与生成式双模式、答案带编号引用；无依据时明确返回空。</td>
+</tr>
+</tbody>
+</table>
+
+<h3>1.3 设计原则</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:22%">原则</th><th style="width:78%">含义与取舍</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>零外部依赖</td>
+<td>不需要 npm install，不需要独立数据库服务，使用 Node.js 22 内置 SQLite。内网、离线、审计受限环境下可直接部署。</td>
+</tr>
+<tr>
+<td>物理隔离优先</td>
+<td>一个企业一套服务、一个数据库文件。企业之间靠部署边界与文件系统隔离，连数据库连接都不共享，不存在「漏写条件」的可能。</td>
+</tr>
+<tr>
+<td>宁可少答，不可错答</td>
+<td>知识库没有依据时返回空结果并由调用方转人工，而不是让模型补一个看起来合理的答案。</td>
+</tr>
+<tr>
+<td>结果可解释</td>
+<td>检索每一分项都可单独查看，密级过滤在前端可验证，向量通道可单独关闭对比。出问题能定位，而不是"就是不准"。</td>
+</tr>
+<tr>
+<td>不重复造轮子</td>
+<td>文档切分、检索、向量化都在服务端完成，前端与 Agent 侧只做展示，避免多端逻辑漂移。</td>
+</tr>
+</tbody>
+</table>
+
+<h2>2　系统架构</h2>
+
+<h3>2.1 总体架构</h3>
+
+<pre>        企业业务系统              内部工具               AI Agent
+              |                     |                     |
+              | REST API            | REST API            | MCP 插件 (stdio)
+              +----------+----------+----------+----------+
+                         |                     |
+                         v                     v
+        +------------------------------------------------------+
+        |                  知识库服务 (Node.js 22)              |
+        |                                                      |
+        |  接入层   鉴权 · 限流 · CORS · 请求追踪 · 审计         |
+        |  业务层   空间 / 文档 / FAQ · 密级过滤 · 后台 RBAC      |
+        |  检索层   词法加权 BM25 + 向量余弦融合 + 上下文扩展    |
+        |  问答层   FAQ 前置 → 检索 → 抽取式 / 生成式            |
+        |  存储层   单库（业务+账号+密钥+审计+向量）+ 原件目录   |
+        +------------------------------------------------------+
+                                  |
+                +-----------------+-----------------+
+                |                                   |
+           企业 A 部署                          企业 B 部署
+     data/kb.db（业务+账号+向量）          data/kb.db
+     data/files/（原始件）                 data/files/
+     config.json: instance.id = acme       instance.id = beta</pre>
+
+<h3>2.2 技术选型</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:22%">层次</th><th style="width:26%">选型</th><th style="width:52%">理由</th></tr>
+</thead>
+<tbody>
+<tr><td>运行时</td><td>Node.js ≥ 22.5</td><td>内置 node:sqlite 与 zlib，无需任何原生模块编译</td></tr>
+<tr><td>存储</td><td>SQLite（单文件）</td><td>零运维、可整库复制备份、单机十万块检索仍在 20 毫秒内</td></tr>
+<tr><td>HTTP</td><td>Node 内置 http</td><td>不引入框架，路由与中间件自行实现，行为完全可控</td></tr>
+<tr><td>文档解析</td><td>自实现 zip + XML 解析</td><td>docx/pptx/xlsx 本质是 zip 内的 XML，无需第三方库</td></tr>
+<tr><td>向量化</td><td>本地哈希向量 / 可切远程接口</td><td>默认不出网、零成本；配置后接 OpenAI 兼容 embedding 接口</td></tr>
+<tr><td>前端</td><td>单文件 HTML</td><td>无需构建工具，随服务分发，改完刷新即生效</td></tr>
+<tr><td>第三方依赖</td><td>无</td><td>部署包即源码，审计时无需清点供应链风险</td></tr>
+</tbody>
+</table>
+
+<h3>2.3 目录结构</h3>
+
+<pre>kb-hub/
+├── server.js                 HTTP 服务入口
+├── cli.js                    命令行工具（22 个命令）
+├── config.json               运行时配置（首次启动自动生成）
+├── mcp/server.js             MCP 插件（stdio 协议，6 个工具）
+├── public/
+│   ├── admin.html            企业后台（登录 + 六个功能模块）
+│   └── console.html          检索控制台（检索 / 问答 / 上传）
+├── src/
+│   ├── api.js                路由 · 鉴权 · 限流 · 审计
+│   ├── admin.js              后台接口与页面分发
+│   ├── rbac.js               角色 · 等级 · 密码 · 会话 · 防提权
+│   ├── tenant-db.js          单库连接封装 · 旧目录自动迁移
+│   ├── schema.sql            数据库结构（单库 16 张表）
+│   ├── vectors.js            向量表读写与检索
+│   ├── embed.js              向量化（本地 / 远程）
+│   ├── indexer.js            混合检索与打分
+│   ├── answer.js             问答编排
+│   ├── ingest.js             入库编排 · 幂等 · 版本
+│   ├── parsers.js            各格式文档解析
+│   ├── splitter.js           按标题层级切块
+│   ├── tokenize.js           中文二元切分与英文分词
+│   ├── storage.js            原件落盘与读取
+│   ├── multipart.js          零依赖表单解析
+│   ├── cache.js              LRU 缓存与整体失效
+│   ├── store.js              数据访问层
+│   ├── synonyms.js           同义词归一
+│   └── config.js / db.js / bootstrap.js
+├── docs/
+│   ├── openapi.json          OpenAPI 3.1 契约（22 个接口）
+│   └── 部署与权限设计.md      部署形态与权限专项设计
+├── scripts/
+│   ├── seed-demo.js          演示数据与演示账号
+│   ├── smoke-test.js         端到端自测（86 项断言）
+│   ├── eval-retrieval.js     检索质量评测
+│   ├── embed.js              向量补齐与重建
+│   ├── sync.js               目录 / URL 增量同步
+│   ├── mock-embed-server.js  语义向量模拟服务（验证链路用）
+│   └── make-fixtures.js      生成各格式测试件
+├── examples/
+│   ├── node-client.js        Node 对接示例
+│   ├── python_client.py      Python 对接示例
+│   └── mcp-config.json       MCP 客户端配置片段
+└── data/                    整个目录可换位置（config.database / KB_DB）
+    ├── kb.db                唯一数据库：业务 + 账号 + 密钥 + 审计 + 向量
+    └── files/               原始件，按 sha256 两级目录存放</pre>
+
+<h2>3　单实例部署与数据文件</h2>
+
+<p>本项目不做「一套服务托管多个企业」。一个企业部署一套服务，服务只认自己那一个数据库文件；两个企业之间连数据库连接都不共享。</p>
+
+<h3>3.1 部署形态</h3>
+
+<pre>
+企业 A 的服务器                        企业 B 的服务器
+┌──────────────────────────┐         ┌──────────────────────────┐
+│ kb-hub 进程（端口 7300）  │         │ kb-hub 进程（端口 7300）  │
+│  config.json             │         │  config.json             │
+│   ├ instance.id = acme   │         │   ├ instance.id = beta   │
+│   └ database = …/kb.db   │         │   └ database = …/kb.db   │
+└────────────┬─────────────┘         └────────────┬─────────────┘
+             │                                     │
+      data/kb.db + data/files/              data/kb.db + data/files/
+   账号、文档、向量全在这一个文件里      与 A 完全无关，互不可见
+</pre>
+
+<p>隔离不是靠 SQL 里的 <code>WHERE tenant_id = ?</code>，而是靠「压根连不到对方的库」。这样即使业务代码写错条件，也不可能读到另一家企业的数据。</p>
+
+<h3>3.2 数据目录与配置</h3>
+
+<p>一个企业需要维护的只有两样东西：一个 <code>.db</code> 文件和一个 <code>files/</code> 目录。</p>
+
+<pre>
+data/                         可用 config.dataDir 改根目录
+├── kb.db                     唯一数据库（业务表 + 账号 + 密钥 + 审计 + 向量）
+└── files/
+    ├── 04/04a1…f3.docx       原始件按 sha256 前两位分桶，内容相同的只存一份
+    └── a6/a6c9…21.pdf
+</pre>
+
+<p>数据库位置在 <code>config.json</code> 里指定，也可以用环境变量覆盖，适合把数据放到独立磁盘或加密卷：</p>
+
+<pre>{
+  "instance": { "id": "acme", "name": "示例科技有限公司" },
+  "dataDir": "data",
+  "database": "data/kb.db"
+}
+
+# 或临时指定（优先级最高）
+KB_DB=/mnt/secure/acme/kb.db node server.js</pre>
+
+<p>首次启动会自动建库、建表、建默认空间，不需要手动执行 SQL。已有旧数据时会在启动阶段自动迁移（见 3.5）。</p>
+
+<h3>3.3 为什么放弃「一套服务管多企业」</h3>
+
+<p>早期版本确实是多租户：一个控制库存租户注册表，每个企业一个子库。实际用下来，多出来的复杂度并不值得——尤其是运维和故障隔离这两块。</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:18%">维度</th><th style="width:38%">一套服务管多企业（旧）</th><th style="width:44%">一企一部署（现在）</th></tr>
+</thead>
+<tbody>
+<tr><td>隔离强度</td><td>靠代码里每处查询都写对租户条件，漏一处就是跨企业泄漏</td><td>靠进程与文件边界，写错也读不到别人的库</td></tr>
+<tr><td>故障面</td><td>一个企业的坏数据、慢查询、库损坏会拖累所有人</td><td>互不影响，单个企业可以随时重启、回滚、换机器</td></tr>
+<tr><td>备份与迁移</td><td>要么整库备份，要么按租户导出，导出逻辑本身要维护</td><td>拷一个文件 + 一个目录，换台机器改条路径就能跑</td></tr>
+<tr><td>升级</td><td>一次升级影响全部企业，必须同时兼容所有租户的数据版本</td><td>逐家升级，出问题只影响一家，可灰度</td></tr>
+<tr><td>配额与计费</td><td>要在库里做配额表、限流表</td><td>交给部署层（容器配额、磁盘配额、网关限流）</td></tr>
+<tr><td>代价</td><td>—</td><td>每家要跑一个进程；跨企业汇总要另做运维层，不能靠一条 SQL</td></tr>
+</tbody>
+</table>
+
+<p>如果将来确实需要「一个控制台看所有企业」，正确做法是在外层做一个运维平台，把各实例的 <code>GET /v1/admin/instance</code> 汇总起来，而不是把数据重新塞回一个库。</p>
+
+<h3>3.4 数据库里有什么</h3>
+
+<p>单库共 16 张表，按职责分四组。所有表都保留 <code>tenant_id</code> 列，值固定等于 <code>config.instance.id</code>——这样历史 SQL 不用重写，也多一层显式标记。</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:16%">分组</th><th style="width:26%">表</th><th style="width:58%">职责</th></tr>
+</thead>
+<tbody>
+<tr><td rowspan="5">身份与接入</td><td>instance</td><td>本企业信息，永远只有一行</td></tr>
+<tr><td>api_keys</td><td>接入密钥，只存哈希；带 reader_level 限定可读密级</td></tr>
+<tr><td>admin_users</td><td>后台账号：角色 + 员工等级双维度</td></tr>
+<tr><td>admin_sessions</td><td>后台会话，可随时吊销</td></tr>
+<tr><td>audit_logs</td><td>操作审计：谁、什么时候、对什么、结果如何</td></tr>
+<tr><td rowspan="9">知识内容</td><td>spaces</td><td>知识空间（部门 / 主题分区）</td></tr>
+<tr><td>documents</td><td>文档元数据：来源、哈希、密级、解析状态、版本</td></tr>
+<tr><td>chunks</td><td>切块后的正文，带章节路径</td></tr>
+<tr><td>terms</td><td>倒排索引：词 → 块 → 词频</td></tr>
+<tr><td>corpus_stats</td><td>语料统计，供 BM25 计算</td></tr>
+<tr><td>faqs</td><td>标准问答，命中时优先于文档检索</td></tr>
+<tr><td>doc_files</td><td>原始件元数据，内容按 sha256 去重</td></tr>
+<tr><td>document_versions</td><td>版本历史，旧版原始件保留</td></tr>
+<tr><td>sync_cursors</td><td>增量同步游标</td></tr>
+<tr><td rowspan="2">向量</td><td>vectors</td><td>每块一条，Float32 BLOB；与原文同库，少一个文件要备份</td></tr>
+<tr><td>vec_meta</td><td>向量模型与维度，用于判断是否需要重建</td></tr>
+</tbody>
+</table>
+
+<h3>3.5 从旧的多租户版本升级</h3>
+
+<p>旧版本的目录是 <code>data/tenants/&lt;企业ID&gt;/</code>。新版本首次启动时会自动迁移，规则如下：</p>
+
+<ol>
+<li>选主企业：优先读 <code>config.instance.legacyTenant</code>；没配就取旧控制库里最早创建的租户；再没有就取文档最多的目录。</li>
+<li>清空单库业务表，从该企业目录导入文档、块、倒排、FAQ、原件元数据与向量。</li>
+<li>把账号、密钥、会话、审计里的租户标记统一改成 <code>config.instance.id</code>。</li>
+<li>其他旧租户的记录从单库移除（原始目录 <code>data/tenants/</code> 不会被删，随时可查）。</li>
+</ol>
+
+<p>迁移日志会打印在启动输出里，例如：</p>
+
+<pre>[db] 已从旧目录 t_demo 重建单库：10 篇文档 → /opt/kb/data/kb.db
+[db] 单实例化：已从库中移除其他旧租户的 22 条业务记录（原始目录 data/tenants/ 未删除）</pre>
+
+<p class="small">迁移前建议先整目录备份一次。确认新库正常后，<code>data/tenants/</code> 可以整体删除。</p>
+
+<h3>3.6 备份、迁移与克隆</h3>
+
+<pre># 备份（无需停服）
+复制 data/kb.db（连同 -wal / -shm）与 data/files/ 整个目录
+
+# 迁移到另一台机器
+停服 → 复制 data/ → 新机器改 config.json 的 database 指向它 → 启动
+
+# 克隆一套测试环境
+复制 data/ 到别处 → 用 KB_DB 指向副本启动，正式库不受影响</pre>
+
+<p class="small">SQLite 处于 WAL 模式。热备份时要么一并复制 <code>-wal</code> 与 <code>-shm</code>，要么先执行 <code>PRAGMA wal_checkpoint(TRUNCATE)</code>。</p>
+
+<h2>4　权限模型</h2>
+
+<h3>4.1 两个正交维度</h3>
+
+<p>企业里的权限实际上是两件不同的事，必须拆开建模：</p>
+
+<ul>
+<li><strong>能做什么操作</strong>——能否上传、能否删除、能否管人、能否签发密钥。由<strong>角色</strong>决定。</li>
+<li><strong>能看到什么内容</strong>——公开资料、内部制度、部门数据、管理层文件、机密方案。由<strong>员工职级</strong>决定。</li>
+</ul>
+
+<p class="noindent">只用一个维度会导致两种极端：按角色划分则"内容编辑"能看全部机密；按职级划分则"部门主管"无法管理文档。两个维度交叉后，一个"部门主管 + L3"自然获得"能管文档、能看部门级且看不到机密"的合理组合。</p>
+
+<h3>4.2 角色定义</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:14%">角色</th><th style="width:14%">名称</th><th style="width:72%">权限范围</th></tr>
+</thead>
+<tbody>
+<tr><td>owner</td><td>企业负责人</td><td>全部权限，含成员管理、密钥签发与安全设置。每个企业必须至少保留一位。</td></tr>
+<tr><td>admin</td><td>知识库管理员</td><td>管理文档、空间、FAQ、密钥与成员；不能改动企业负责人。</td></tr>
+<tr><td>manager</td><td>部门主管</td><td>管理文档与密级、可查看审计、可邀请成员；不能签发密钥。</td></tr>
+<tr><td>editor</td><td>内容编辑</td><td>上传与维护文档、维护 FAQ、查看统计；不能删除成员或签发密钥。</td></tr>
+<tr><td>viewer</td><td>只读成员</td><td>只能检索、查看文档与统计。</td></tr>
+</tbody>
+</table>
+
+<h3>4.3 权限点矩阵</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:26%">权限点</th><th style="width:11%">owner</th><th style="width:11%">admin</th><th style="width:11%">manager</th><th style="width:11%">editor</th><th style="width:11%">viewer</th></tr>
+</thead>
+<tbody>
+<tr><td>doc.read 读取文档</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">√</td></tr>
+<tr><td>doc.write 上传与编辑</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">—</td></tr>
+<tr><td>doc.delete 删除文档</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">—</td><td class="center">—</td></tr>
+<tr><td>doc.level 调整密级</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">—</td><td class="center">—</td></tr>
+<tr><td>space.read 查看空间</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">—</td></tr>
+<tr><td>space.write 管理空间</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">—</td><td class="center">—</td></tr>
+<tr><td>faq.write 维护问答</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">—</td></tr>
+<tr><td>member.read 查看成员</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">—</td><td class="center">—</td></tr>
+<tr><td>member.write 管理成员</td><td class="center">√</td><td class="center">√</td><td class="center">邀请</td><td class="center">—</td><td class="center">—</td></tr>
+<tr><td>key.read / key.write 密钥</td><td class="center">√</td><td class="center">√</td><td class="center">—</td><td class="center">—</td><td class="center">—</td></tr>
+<tr><td>audit.read 查看审计</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">—</td><td class="center">—</td></tr>
+<tr><td>stats.read 查看统计</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">√</td><td class="center">√</td></tr>
+<tr><td>vector.rebuild 重建向量</td><td class="center">√</td><td class="center">√</td><td class="center">—</td><td class="center">—</td><td class="center">—</td></tr>
+</tbody>
+</table>
+
+<h3>4.4 职级定义</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:10%">职级</th><th style="width:22%">对应岗位</th><th style="width:26%">可读文档密级</th><th style="width:42%">典型场景</th></tr>
+</thead>
+<tbody>
+<tr><td>L1</td><td>普通员工</td><td>公开</td><td>新员工入职查询制度、报销标准、IT 支持流程</td></tr>
+<tr><td>L2</td><td>高级员工 / 组长</td><td>公开 + 内部</td><td>查阅部门内部规范、项目流程</td></tr>
+<tr><td>L3</td><td>主管</td><td>至部门级</td><td>查阅部门预算口径、团队管理资料</td></tr>
+<tr><td>L4</td><td>经理 / 总监</td><td>至管理层</td><td>查阅报价体系、折扣审批权限</td></tr>
+<tr><td>L5</td><td>高管 / 企业负责人</td><td>全部（含机密）</td><td>查阅薪酬方案、期权计划</td></tr>
+</tbody>
+</table>
+
+<p>文档侧同样有五档密级：公开、内部、部门、管理、机密，与职级一一对应。一份文档设成"管理"级，则只有 L4 及以上人员可检索到。</p>
+
+<h3>4.5 密钥的数据等级</h3>
+
+<p>企业系统对接通常不区分"人"，而是一个服务账号代表某种用途。因此 API 密钥也带一个<strong>可读等级上限</strong>，默认 L5（即与企业数据权限一致）。给客服机器人签发 L1 密钥，它就只能检索公开资料——即使它的密钥泄露，也拿不到机密文档。</p>
+
+<p>请求侧还可以进一步压低：请求体传 <code>level</code>，实际生效等级取<strong>密钥等级与该值中的较小者</strong>。这意味着调用方永远无法通过参数抬高自己的权限，只能自我限制。响应中会回显本次实际生效的等级，便于排查"为什么查不到"。</p>
+
+<pre>实际生效等级 = min(密钥的 reader_level, 请求体中的 level)</pre>
+
+<h3>4.6 防提权规则</h3>
+
+<p>后台的成员管理内置以下约束，任何一条不满足都会被拒绝：</p>
+
+<ol>
+<li>只有企业负责人（owner）能授予 owner 角色。</li>
+<li>不能管理与自己同级或更高级的角色。</li>
+<li>不能修改职级高于自己的成员。</li>
+<li>不能删除自己。</li>
+<li>企业内任何时刻必须保留至少一位 owner。</li>
+</ol>
+
+<h3>4.7 密级过滤必须处处生效</h3>
+
+<p>这是一个容易出错的点：密级过滤不能只在检索接口上做。只要有一个入口没过滤，低职级人员就能绕道拿到机密内容。本项目在以下入口全部实施过滤，并有对应的自动化断言：</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:28%">入口</th><th style="width:72%">过滤行为</th></tr>
+</thead>
+<tbody>
+<tr><td>检索 /v1/search</td><td>越级切块在候选阶段即被排除，不参与打分</td></tr>
+<tr><td>问答 /v1/ask</td><td>检索结果与 FAQ 命中均按等级过滤</td></tr>
+<tr><td>文档列表 /v1/documents</td><td>按等级过滤，支持 <code>level</code> 参数进一步压低</td></tr>
+<tr><td>文档详情 /v1/documents/:id</td><td>越级文档统一返回 404，不暴露存在性</td></tr>
+<tr><td>原件下载 /v1/documents/:id/file</td><td>越级返回 403（文档可见但原件受保护）</td></tr>
+<tr><td>FAQ 列表 /v1/faqs</td><td>按等级过滤，与问答接口口径一致</td></tr>
+<tr><td>企业概览 /v1/meta</td><td>文档数、块数、问答数按等级统计，另给总数表示规模</td></tr>
+<tr><td>管理后台</td><td>成员只见自己等级内的文档；owner 可见全部</td></tr>
+<tr><td>MCP 插件</td><td>透传 <code>level</code>，输出标注密级并提示不要臆测更高密级内容</td></tr>
+</tbody>
+</table>
+
+<h3>4.8 会话与密码</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:24%">项目</th><th style="width:76%">实现</th></tr>
+</thead>
+<tbody>
+<tr><td>密码存储</td><td>scrypt（N=16384, r=8, p=1）加 16 字节随机盐，不存明文</td></tr>
+<tr><td>密码策略</td><td>长度不少于 8 位，须同时包含字母与数字</td></tr>
+<tr><td>会话标识</td><td>48 位十六进制随机串，存于 admin_sessions 表</td></tr>
+<tr><td>Cookie</td><td>HttpOnly、SameSite=Lax；启用 HTTPS 后可加 Secure</td></tr>
+<tr><td>有效期</td><td>默认 12 小时，可配置；重置密码后该用户所有会话立即失效</td></tr>
+</tbody>
+</table>
+
+<h2>5　资料入库</h2>
+
+<h3>5.1 入库顺序：先落盘，再解析</h3>
+
+<p>这个顺序是关键。如果先解析、解析成功才保存文件，那么扫描件、加密 PDF、损坏文件一旦解析失败，原件就永久丢失了——而这恰恰是最需要人工查看的文件。</p>
+
+<pre>接收文件
+   ↓
+计算 sha256 → 落盘到 files/&lt;前两位&gt;/&lt;sha256&gt;.&lt;ext&gt;   ← 无论后续如何，原件已安全
+   ↓
+解析抽取文字
+   ├─ 成功 → 切块 → 建倒排 → 写向量 → 状态 ok
+   └─ 失败 → 建空索引 → 状态 failed，记录原因   ← 仍可下载、可追溯
+   ↓
+写版本记录（内容有变更时）</pre>
+
+<p>解析失败的文件会出现在企业概览的"解析失败"计数中，运营可据此补做 OCR 或要求上传可复制文本的版本。</p>
+
+<h3>5.2 幂等与版本</h3>
+
+<p>入库以 <code>source_uri</code>（来源标识）加内容哈希作为幂等键。同一来源、内容未变时直接返回"跳过"，不重建索引；内容变化时自动升版本、重建索引，并保留旧版原件。</p>
+
+<div class="warn">
+<p><span class="kv">注意：</span>幂等键包含来源标识。同一个文件分别以种子数据、命令行路径、网页上传三种来源入库，会被视为三份不同来源而各存一份。这是设计如此——用于区分"同一份文件的不同获取渠道"，但在批量导入时应固定使用同一种入口，避免重复。</p>
+</div>
+
+<p>还有一种常见需求是"内容没变，只想调整密级"。此时若在入库时显式传入新的密级，系统会更新密级并返回"跳过 + 已调整密级"的标记，不必重新解析。</p>
+
+<h3>5.3 切块策略</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:26%">参数</th><th style="width:18%">默认值</th><th style="width:56%">说明</th></tr>
+</thead>
+<tbody>
+<tr><td>块最大字符数</td><td>700</td><td>条款类文档可调小至 400 提高精度，叙事类可调大至 1000 保留上下文</td></tr>
+<tr><td>相邻块重叠</td><td>80 字符</td><td>按句子边界重叠，避免答案被切在块边界处截断</td></tr>
+<tr><td>切分依据</td><td>标题层级</td><td>按 Markdown 标题、Word 标题样式分层，块的章节路径一并保存</td></tr>
+<tr><td>纯标题块</td><td>丢弃</td><td>只有标题没有正文的块不参与检索，避免"标题命中但内容为空"</td></tr>
+</tbody>
+</table>
+
+<p>检索按小块算分（精度高），命中后自动补齐同一章节的前后相邻块（最多 1400 字），因此调用方拿到的是完整段落而不是半句话。</p>
+
+<h2>6　检索与问答</h2>
+
+<h3>6.1 混合检索的两路</h3>
+
+<p>企业内网环境有两类查询并存：一类是术语精确匹配（系统名、错误码、产品代号、金额数字），另一类是口语化提问（"住一晚酒店最多能报多少钱"）。前者词法检索更强，后者需要语义理解。因此采用两路融合：</p>
+
+<pre>最终得分 = 0.7 × (词法分 / 本次最高词法分) + 0.3 × 向量余弦</pre>
+
+<p>两路权重均可配置。向量通道在两种情况下自动关闭：该企业尚未建立向量库，或请求显式传 <code>vector:false</code>。关闭后退化为纯词法检索，此时词法权重为 1。</p>
+
+<h3>6.2 词法分的四项加权</h3>
+
+<p>基础分是 BM25，但它只能回答"词出现了几次"。真正的难点是"词对得上但不是这一段"，因此在其上叠加四项调整：</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:24%">加权项</th><th style="width:18%">系数</th><th style="width:58%">解决的问题</th></tr>
+</thead>
+<tbody>
+<tr><td>短语命中</td><td>×1.35</td><td>整句原文出现在段落中，是最强的相关性信号</td></tr>
+<tr><td>章节标题命中</td><td>×1.20</td><td>"住宿标准"这类问题应落在同名小节，而非正文其他地方</td></tr>
+<tr><td>文档标题命中</td><td>×1.15</td><td>提问指向某份制度时，该制度的块应优先</td></tr>
+<tr><td>命中词邻近度</td><td>×1.12</td><td>查询词散落在文首和文尾，大概率不是同一件事</td></tr>
+<tr><td>数字 / 英文硬词</td><td>×0.75~1.20</td><td>问"600 元"时，命中"400 元"的段落必须被压低</td></tr>
+</tbody>
+</table>
+
+<p>每个分项都可以通过请求参数 <code>debug:true</code> 单独查看，便于定位"为什么这条排第一"。</p>
+
+<h3>6.3 向量通道</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:24%">项目</th><th style="width:76%">说明</th></tr>
+</thead>
+<tbody>
+<tr><td>存储位置</td><td>本企业数据库里的 <code>vectors</code> 表（与原文同库），字段为切块 ID、文档 ID、空间 ID、维度、模型名、向量二进制、更新时间</td></tr>
+<tr><td>默认模型</td><td>本地确定性哈希向量，256 维，不联网、无成本</td></tr>
+<tr><td>远程模型</td><td>配置 OpenAI 兼容接口后自动切换，支持任意维度</td></tr>
+<tr><td>模型隔离</td><td>模型名与维度随向量一起记录，切换模型后旧向量自动失效并提示重建</td></tr>
+<tr><td>检索方式</td><td>内存全量点积，企业级数据量下耗时可忽略</td></tr>
+</tbody>
+</table>
+
+<h3>6.4 两种防止噪声的设计</h3>
+
+<p>融合两路分数时，最容易被忽略的问题是：向量余弦对任何两个文本都会给出一个非零值，哪怕它们毫不相关。这会让"什么都不像"的切块也获得一定分数，稀释真正的结果。因此加了两道闸：</p>
+
+<ol>
+<li><strong>余弦噪声门限</strong>：余弦低于 0.25 时按 0 计算，不参与融合。</li>
+<li><strong>语义救援</strong>：仅当某个切块词法分为 0、但余弦不低于 0.45 时，才允许它进入结果，且最多 2 条。用于处理"完全换了说法"的提问。</li>
+</ol>
+
+<p class="noindent">这两道闸是实测调出来的：不加时，混合检索的排序质量会明显低于纯词法；加上后与词法加权持平，同时保留了向量通道在换词提问上的价值。</p>
+
+<h3>6.5 问答编排</h3>
+
+<pre>提问
+ ↓
+FAQ 精确命中？ ──是──→ 直接返回标准答案（约 0 毫秒）
+ ↓否
+结果缓存命中？ ──是──→ 直接返回（0~1 毫秒）
+ ↓否
+混合检索（5~15 毫秒）
+ ↓
+配置了大模型？ ──是──→ 生成式答案，带编号引用
+              └─否──→ 原文摘录，标注"原文摘录"
+ ↓
+知识库无依据 → 返回空结果，mode = empty</pre>
+
+<p>问答结果带四种模式，调用方据此决定展示方式：</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:16%">模式</th><th style="width:30%">含义</th><th style="width:54%">建议展示方式</th></tr>
+</thead>
+<tbody>
+<tr><td>faq</td><td>命中标准问答条目</td><td>直接展示，可信度最高</td></tr>
+<tr><td>llm</td><td>大模型基于检索结果生成</td><td>正常展示，保留引用来源</td></tr>
+<tr><td>extractive</td><td>未配大模型，返回原文摘录</td><td>展示时标注"原文摘录"</td></tr>
+<tr><td>empty</td><td>知识库无相关内容</td><td><strong>不要让模型自行补答案</strong>，转人工或提示补充文档</td></tr>
+</tbody>
+</table>
+
+<h3>6.6 缓存策略</h3>
+
+<p>检索与问答结果进入容量 2000 条、有效期 2~3 分钟的缓存。关键在于失效方式：任何写操作（入库、删除、重建索引）都会让一个全局版本号递增，旧缓存整体作废，而不是逐个维护依赖关系。这样实现简单，且绝不会返回过期结果。</p>
+
+<h2>7　快速上手</h2>
+
+<h3>7.1 环境要求</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:26%">项目</th><th style="width:74%">要求</th></tr>
+</thead>
+<tbody>
+<tr><td>运行时</td><td>Node.js 22.5 或更高（需内置 node:sqlite）</td></tr>
+<tr><td>依赖安装</td><td>无需执行 npm install，无第三方包</td></tr>
+<tr><td>磁盘</td><td>程序约 1 MB；数据按实际文档量增长，原件为最大占用</td></tr>
+<tr><td>内存</td><td>空载约 60 MB；向量检索为内存全量计算，按企业数据量线性增长</td></tr>
+<tr><td>操作系统</td><td>Windows / Linux / macOS 均可</td></tr>
+</tbody>
+</table>
+
+<h3>7.2 五步启动</h3>
+
+<pre># 1) 初始化：生成 config.json 与数据库，根密钥写入配置文件
+node cli.js init
+
+# 2) 载入演示数据（可选，用于先看效果）
+node cli.js seed
+
+# 3) 启动服务（默认 127.0.0.1:7300）
+node server.js
+
+# 4) 初始化本企业并建负责人账号，拿到 API 密钥（明文只显示一次）
+node cli.js tenant:create "我的公司" --owner-email admin@mycorp.com
+
+# 5) 导入自己的文档
+node cli.js add-dir "D:/公司资料" --space 员工上传</pre>
+
+<h3>7.3 演示环境</h3>
+
+<p>执行 <code>node cli.js seed</code> 会创建一个演示企业，包含 10 篇文档、36 个知识块、5 条标准问答，以及 5 个不同角色的后台账号。</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:26%">账号</th><th style="width:14%">角色</th><th style="width:10%">职级</th><th style="width:50%">可见范围</th></tr>
+</thead>
+<tbody>
+<tr><td>owner@demo.local</td><td>owner</td><td>L5</td><td>全部文档与后台功能</td></tr>
+<tr><td>admin@demo.local</td><td>admin</td><td>L5</td><td>除转让企业外的全部功能</td></tr>
+<tr><td>manager@demo.local</td><td>manager</td><td>L4</td><td>可读至管理级文档，可管文档不可发密钥</td></tr>
+<tr><td>editor@demo.local</td><td>editor</td><td>L2</td><td>可上传维护，只读至内部级</td></tr>
+<tr><td>viewer@demo.local</td><td>viewer</td><td>L1</td><td>只读公开资料</td></tr>
+</tbody>
+</table>
+
+<p class="small">演示密码统一为 <code>Demo@2026</code>，上线前必须全部修改。演示账号的密码可通过 <code>node cli.js admin:reset &lt;邮箱&gt;</code> 重置。</p>
+
+<h3>7.4 验证</h3>
+
+<pre># 健康检查
+curl http://127.0.0.1:7300/health
+
+# 检索
+curl -X POST http://127.0.0.1:7300/v1/search \
+  -H "Authorization: Bearer &lt;你的密钥&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"住宿标准","top_k":3}'
+
+# 问答
+curl -X POST http://127.0.0.1:7300/v1/ask \
+  -H "Authorization: Bearer &lt;你的密钥&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"出差住宿能报多少"}'
+
+# 端到端自测（86 项断言）
+node scripts/smoke-test.js</pre>
+
+<h3>7.5 三个访问入口</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:24%">入口</th><th style="width:24%">地址</th><th style="width:52%">用途</th></tr>
+</thead>
+<tbody>
+<tr><td>企业后台</td><td>/admin</td><td>企业管理员登录，管理成员、密钥、文档密级、审计</td></tr>
+<tr><td>检索控制台</td><td>/console</td><td>粘贴密钥后检索、问答、上传，用于验证与调试</td></tr>
+<tr><td>接口契约</td><td>/openapi.json</td><td>OpenAPI 3.1，可导入 Postman / Apifox 或生成 SDK</td></tr>
+</tbody>
+</table>
+
+<h2>8　使用手册</h2>
+
+<h3>8.1 添加资料的三条路径</h3>
+
+<h4>路径一：网页上传（推荐给员工）</h4>
+
+<p>打开 <code>/console</code>，粘贴 API 密钥连接后：先在上方空间下拉中选择归属空间，再把文件拖入虚线区域或点击选择，可多选，单次最多 20 个。随后填写上传人、标签、密级三项可选信息，系统自动入库并逐条显示解析出的知识块数量。</p>
+
+<div class="warn">
+<p><span class="kv">密级会被截断：</span>网页上传时选择的密级会与密钥的可读等级取较小值。用 L1 密钥登录时选择"机密"，实际只会存为 L1。</p>
+</div>
+
+<h4>路径二：命令行（适合批量导入）</h4>
+
+<pre># 单个文件
+node cli.js add D:/资料/报销制度.docx --space norm --tags 差旅,报销 --level 2
+
+# 整个目录（递归；自动跳过 node_modules、.git、.venv 等）
+node cli.js add-dir D:/公司资料 --space 员工上传</pre>
+
+<p>参数说明：<code>--space</code> 空间标识或名称、<code>--tags</code> 逗号分隔的标签、<code>--level</code> 密级 1~5。目录导入不支持按文件指定密级。<code>--tenant</code> 在单实例下已无意义，旧脚本里带着也不报错，会被忽略。</p>
+
+<h4>路径三：接口推送（适合企业系统对接）</h4>
+
+<pre>POST /v1/uploads
+Content-Type: multipart/form-data
+  file=@报告.pdf
+  space_slug=norm
+  tags=财务,月度
+  min_level=2
+  uploader=zhangsan@corp.com</pre>
+
+<p>也可使用 JSON 方式以 base64 传文件，或直接向 <code>POST /v1/documents</code> 提交纯文本内容，适合已经在系统中结构化的资料。</p>
+
+<h3>8.2 支持的格式</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:22%">类别</th><th style="width:34%">扩展名</th><th style="width:44%">说明</th></tr>
+</thead>
+<tbody>
+<tr><td>Word</td><td>.docx</td><td>保留标题层级用于切块</td></tr>
+<tr><td>PowerPoint</td><td>.pptx</td><td>逐页抽取文字</td></tr>
+<tr><td>Excel</td><td>.xlsx</td><td>逐行抽取，保留表头关联</td></tr>
+<tr><td>PDF</td><td>.pdf</td><td>仅文字版；扫描件无 OCR，会存原件并标记解析失败</td></tr>
+<tr><td>Markdown</td><td>.md / .markdown</td><td>切块效果最好，推荐作为知识库主格式</td></tr>
+<tr><td>纯文本</td><td>.txt / .log</td><td>按段落与句子边界切分</td></tr>
+<tr><td>结构化</td><td>.json / .yaml / .yml / .csv</td><td>转文本后入库</td></tr>
+<tr><td>网页</td><td>.html / .htm</td><td>去除标签后入库</td></tr>
+</tbody>
+</table>
+
+<h3>8.3 企业后台</h3>
+
+<p>后台共六个模块，均按角色与职级双重校验：</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:22%">模块</th><th style="width:78%">功能</th></tr>
+</thead>
+<tbody>
+<tr><td>概览</td><td>文档数、知识块数、向量块数、问答数、原件占用、可读等级、独立库路径、解析失败计数</td></tr>
+<tr><td>文档与密级</td><td>文档列表、按空间与关键词筛选、调整单篇密级、下载原件</td></tr>
+<tr><td>成员权限</td><td>成员列表、新增成员、调整角色与职级、停用与删除</td></tr>
+<tr><td>API 密钥</td><td>签发密钥、设定可读等级、吊销密钥、查看使用统计</td></tr>
+<tr><td>操作审计</td><td>谁在什么时候做了什么，含操作人与来源 IP</td></tr>
+<tr><td>向量索引</td><td>查看向量规模与模型、触发重建、查看健康状态</td></tr>
+</tbody>
+</table>
+
+<h3>8.4 命令行命令一览</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:38%">命令</th><th style="width:62%">用途</th></tr>
+</thead>
+<tbody>
+<tr><td>init</td><td>初始化配置与数据库</td></tr>
+<tr><td>seed</td><td>载入演示数据与演示账号</td></tr>
+<tr><td>tenant:create / tenant:list</td><td>初始化本企业（写实例记录 + 建负责人）/ 查看本实例规模与库路径</td></tr>
+<tr><td>key:create / key:list / key:revoke</td><td>签发、列出、吊销 API 密钥</td></tr>
+<tr><td>admin:create / admin:list / admin:reset / admin:roles</td><td>后台账号管理，含角色清单</td></tr>
+<tr><td>vector:stats / vector:rebuild</td><td>查看向量规模 / 重建向量</td></tr>
+<tr><td>add / add-dir</td><td>单文件 / 整目录入库</td></tr>
+<tr><td>faq:add</td><td>添加标准问答</td></tr>
+<tr><td>list / delete</td><td>列出文档 / 删除文档</td></tr>
+<tr><td>reindex</td><td>重建倒排索引</td></tr>
+<tr><td>search / ask / stats</td><td>命令行验证检索、问答与统计</td></tr>
+</tbody>
+</table>
+
+<h2>9　接口说明</h2>
+
+<h3>9.1 统一约定</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:24%">项目</th><th style="width:76%">约定</th></tr>
+</thead>
+<tbody>
+<tr><td>基础地址</td><td>http://&lt;host&gt;:&lt;port&gt;</td></tr>
+<tr><td>认证方式</td><td><code>Authorization: Bearer &lt;密钥&gt;</code> 或 <code>X-API-Key: &lt;密钥&gt;</code></td></tr>
+<tr><td>请求体</td><td>application/json，文件上传用 multipart/form-data</td></tr>
+<tr><td>请求追踪</td><td>响应头 <code>X-Request-Id</code>，排查问题时提供该值</td></tr>
+<tr><td>错误格式</td><td><code>{"error":{"code":"...","message":"...","request_id":"..."}}</code></td></tr>
+<tr><td>限流</td><td>默认每分钟 120 次，按密钥配置；超限返回 429 并带 <code>Retry-After</code></td></tr>
+<tr><td>请求体上限</td><td>32 MB，超过请改用目录导入</td></tr>
+</tbody>
+</table>
+
+<h3>9.2 业务接口</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:9%">方法</th><th style="width:32%">路径</th><th style="width:12%">权限</th><th style="width:47%">说明</th></tr>
+</thead>
+<tbody>
+<tr><td>GET</td><td>/health</td><td>无</td><td>健康检查，返回版本、运行时长、大模型状态</td></tr>
+<tr><td>GET</td><td>/v1/meta</td><td>任意</td><td>企业信息、语料规模、向量统计、独立库路径、能力清单</td></tr>
+<tr><td>POST</td><td>/v1/search</td><td>search</td><td>检索原文片段，返回排序结果与分项得分</td></tr>
+<tr><td>POST</td><td>/v1/ask</td><td>search</td><td>问答，返回带编号引用的答案与模式标记</td></tr>
+<tr><td>GET</td><td>/v1/documents</td><td>read</td><td>文档列表，支持空间、标签、关键词、等级过滤</td></tr>
+<tr><td>POST</td><td>/v1/documents</td><td>write</td><td>入库正文或 base64 文件，可指定密级</td></tr>
+<tr><td>GET</td><td>/v1/documents/:id</td><td>read</td><td>文档详情，可附切块</td></tr>
+<tr><td>DELETE</td><td>/v1/documents/:id</td><td>write</td><td>删除文档并清理索引与向量</td></tr>
+<tr><td>GET</td><td>/v1/documents/:id/file</td><td>read</td><td>下载原件，越级返回 403</td></tr>
+<tr><td>GET</td><td>/v1/documents/:id/versions</td><td>read</td><td>版本历史</td></tr>
+<tr><td>POST</td><td>/v1/uploads</td><td>write</td><td>多文件上传，单次最多 20 个</td></tr>
+<tr><td>GET</td><td>/v1/spaces</td><td>read</td><td>空间列表与文档数</td></tr>
+<tr><td>POST</td><td>/v1/spaces</td><td>admin</td><td>新建空间</td></tr>
+<tr><td>GET</td><td>/v1/faqs</td><td>read</td><td>问答列表，按等级过滤</td></tr>
+<tr><td>POST</td><td>/v1/faqs</td><td>write</td><td>新增问答，可指定密级</td></tr>
+<tr><td>DELETE</td><td>/v1/faqs/:id</td><td>write</td><td>删除问答</td></tr>
+<tr><td>GET</td><td>/v1/audit</td><td>admin</td><td>调用审计记录</td></tr>
+</tbody>
+</table>
+
+<h3>9.3 管理接口（仅根密钥）</h3>
+
+<p>根密钥保存在 <code>config.json</code> 的 rootKey 字段，不分配给任何企业，仅用于平台侧管理。</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:9%">方法</th><th style="width:40%">路径</th><th style="width:51%">说明</th></tr>
+</thead>
+<tbody>
+<tr><td>GET</td><td>/v1/admin/instance</td><td>本企业详情：规模、向量、存储、空间、密钥、成员</td></tr>
+<tr><td>PATCH</td><td>/v1/admin/instance</td><td>修改企业名称，或停用 / 恢复本实例</td></tr>
+<tr><td>GET</td><td>/v1/admin/keys</td><td>密钥列表</td></tr>
+<tr><td>POST</td><td>/v1/admin/keys</td><td>签发密钥，可设定可读等级</td></tr>
+<tr><td>DELETE</td><td>/v1/admin/keys/:id</td><td>吊销密钥，立即生效</td></tr>
+<tr><td>POST</td><td>/v1/admin/reindex</td><td>重建倒排索引与向量</td></tr>
+<tr><td>GET</td><td>/v1/admin/stats</td><td>运维总览：文档、块、向量、原件、24h 查询量</td></tr>
+<tr><td>POST</td><td>/v1/admin/tenants</td><td>已下线，固定返回 410（旧脚本会明确失败而不是误以为创建成功）</td></tr>
+</tbody>
+</table>
+
+<h3>9.4 后台接口</h3>
+
+<p>后台接口走登录会话与 Cookie 鉴权，面向人操作，独立于 <code>/v1</code> 契约，不在 OpenAPI 文档内。</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:36%">路径</th><th style="width:64%">用途</th></tr>
+</thead>
+<tbody>
+<tr><td>GET /admin/api/bootstrap</td><td>登录页所需信息（企业名、可用的角色与等级清单）</td></tr>
+<tr><td>POST /admin/api/login · /logout</td><td>登录与登出</td></tr>
+<tr><td>GET /admin/api/me</td><td>当前登录人信息与权限点</td></tr>
+<tr><td>POST /admin/api/change-password</td><td>修改自己的密码</td></tr>
+<tr><td>GET /admin/api/overview</td><td>概览统计</td></tr>
+<tr><td>GET/PATCH /admin/api/documents</td><td>文档列表、调整密级</td></tr>
+<tr><td>GET/POST /admin/api/spaces</td><td>空间管理</td></tr>
+<tr><td>GET /admin/api/faqs</td><td>问答列表</td></tr>
+<tr><td>GET/POST/PATCH/DELETE /admin/api/members</td><td>成员管理</td></tr>
+<tr><td>GET/POST/DELETE /admin/api/keys</td><td>密钥管理</td></tr>
+<tr><td>GET /admin/api/audit</td><td>操作审计</td></tr>
+<tr><td>GET/POST /admin/api/vectors</td><td>向量统计与重建</td></tr>
+</tbody>
+</table>
+
+<h3>9.5 错误码</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:14%">状态码</th><th style="width:34%">code</th><th style="width:52%">处理建议</th></tr>
+</thead>
+<tbody>
+<tr><td>400</td><td>bad_request / invalid_json</td><td>检查请求体字段与 JSON 格式</td></tr>
+<tr><td>401</td><td>unauthorized</td><td>密钥无效、已吊销、已过期或企业被停用</td></tr>
+<tr><td>403</td><td>forbidden</td><td>密钥缺少对应权限范围，或文档密级高于可读等级</td></tr>
+<tr><td>404</td><td>not_found</td><td>资源不存在，或不属于当前企业（不外泄存在性）</td></tr>
+<tr><td>413</td><td>payload_too_large</td><td>请求体超过 32 MB，改用目录导入</td></tr>
+<tr><td>429</td><td>rate_limited</td><td>按 Retry-After 做指数退避</td></tr>
+<tr><td>500</td><td>internal_error</td><td>用响应中的 request_id 查服务端日志</td></tr>
+</tbody>
+</table>
+
+<h2>10　MCP 插件</h2>
+
+<p>MCP 插件让 AI Agent 以标准协议接入知识库。插件本身是薄封装，所有检索与权限逻辑仍在服务端，因此 Agent 与业务系统看到的结果完全一致。</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:26%">工具</th><th style="width:74%">用途</th></tr>
+</thead>
+<tbody>
+<tr><td>kb_ask</td><td>提问并返回带引用的答案，优先使用此工具</td></tr>
+<tr><td>kb_search</td><td>检索原文片段，适合需要引用原文的场景</td></tr>
+<tr><td>kb_list_spaces</td><td>列出知识空间</td></tr>
+<tr><td>kb_list_documents</td><td>分页列出文档</td></tr>
+<tr><td>kb_get_document</td><td>读取指定文档全文</td></tr>
+<tr><td>kb_stats</td><td>查看知识库规模与可读等级</td></tr>
+</tbody>
+</table>
+
+<p>六个工具均支持 <code>level</code> 参数按职级过滤，并支持通过环境变量设定默认等级。输出中标注每条结果的密级，并在存在更高密级内容被过滤时提示"不要臆测其内容"。</p>
+
+<pre>{
+  "mcpServers": {
+    "kb-hub": {
+      "command": "node",
+      "args": ["D:/kb-hub/mcp/server.js"],
+      "env": {
+        "KB_BASE_URL": "http://127.0.0.1:7300",
+        "KB_API_KEY": "kb_live_xxxxxxxx",
+        "KB_LEVEL": "2"
+      }
+    }
+  }
+}</pre>
+
+<h2>11　运维手册</h2>
+
+<h3>11.1 备份</h3>
+
+<p>单实例部署下，备份就是拷一个数据库文件加一个原件目录：</p>
+
+<pre># 全量备份（无需停服）
+复制 data/kb.db（含 -wal / -shm）与 data/files/
+
+# 迁移到另一台机器
+停服 → 复制 data/ → 新机器改 config.json 的 database 指向它 → 启动
+
+# 克隆测试环境（正式库不受影响）
+复制 data/ 到 data-test/ → KB_DB=data-test/kb.db node server.js</pre>
+
+<p class="small">SQLite 处于 WAL 模式，备份时应连同 <code>-wal</code> 与 <code>-shm</code> 文件一并复制，或使用 SQLite 的在线备份接口。</p>
+
+<h3>11.2 增量同步</h3>
+
+<pre># 目录增量同步（幂等，可反复执行）
+node scripts/sync.js --from "D:/项目文档" --space 项目文档
+
+# 单篇在线文档同步
+node scripts/sync.js --url https://wiki.example.com/a.md --space 产品文档</pre>
+
+<p>同步游标记录在 <code>sync_cursors</code> 表，可按需扩展为基于修改时间的增量判断。</p>
+
+<h3>11.3 索引与向量维护</h3>
+
+<pre># 重建倒排索引（调整切块参数或分词逻辑后必须执行）
+node cli.js reindex
+
+# 补齐或重建向量（切换向量模型后必须执行）
+node cli.js vector:rebuild
+
+# 查看向量状态
+node cli.js vector:stats</pre>
+
+<h3>11.4 定期维护建议</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:26%">动作</th><th style="width:18%">频率</th><th style="width:56%">说明</th></tr>
+</thead>
+<tbody>
+<tr><td>数据备份</td><td>每日</td><td>复制 data/ 目录，可增量</td></tr>
+<tr><td>解析失败排查</td><td>每周</td><td>查看各企业概览中的解析失败计数，补做 OCR 或要求重传</td></tr>
+<tr><td>审计日志归档</td><td>每月</td><td>清理 90 天前记录并回收空间</td></tr>
+<tr><td>零结果查询复盘</td><td>每月</td><td>从审计日志中找出无结果的提问，补充文档或同义词</td></tr>
+<tr><td>密钥轮换</td><td>每季度</td><td>吊销旧密钥、签发新密钥并更新调用方配置</td></tr>
+<tr><td>孤儿原件清理</td><td>每季度</td><td>按 doc_files 引用关系清理已删除文档留下的原件</td></tr>
+</tbody>
+</table>
+
+<h3>11.5 监控指标</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:30%">指标</th><th style="width:34%">来源</th><th style="width:36%">关注点</th></tr>
+</thead>
+<tbody>
+<tr><td>服务可用性</td><td>GET /health</td><td>状态、运行时长、大模型是否可用</td></tr>
+<tr><td>检索延迟</td><td>响应中的 took_ms</td><td>中位 0.6 毫秒、95 分位 2 毫秒为正常</td></tr>
+<tr><td>缓存命中率</td><td>全局统计接口</td><td>长期偏低说明提问离散，可考虑补充 FAQ</td></tr>
+<tr><td>解析失败数</td><td>企业概览</td><td>持续增长说明上传的多为扫描件</td></tr>
+<tr><td>零结果率</td><td>审计日志</td><td>偏高说明知识覆盖不足</td></tr>
+<tr><td>向量健康</td><td>向量索引模块</td><td>块数与文档块数不一致时需重建</td></tr>
+</tbody>
+</table>
+
+<h2>12　评测与验证</h2>
+
+<h3>12.1 端到端自测</h3>
+
+<p><code>node scripts/smoke-test.js</code> 在独立临时目录里拉起一套实例，覆盖 86 项断言，主要包括：认证与密钥校验、数据目录里只有一个数据库文件且没有旧的多企业子目录、混合检索召回、向量召回、职级隔离（列表 / 详情 / 原件 / 问答 / 概览四处口径一致）、后台越权拦截、旧接口返回 410、登出、向量重建。全部通过方可发布。</p>
+
+<h3>12.2 检索质量评测</h3>
+
+<p><code>node scripts/eval-retrieval.js</code> 在一份 14 篇文档、28 条人工标注问题的集合上做三模式对比，其中 6 条为"换词题"（与原文几乎没有相同词，只能靠语义通道）。</p>
+
+<table border="1">
+<thead>
+<tr><th style="width:34%">指标</th><th style="width:22%">纯 BM25</th><th style="width:22%">词法加权</th><th style="width:22%">混合检索</th></tr>
+</thead>
+<tbody>
+<tr><td>top-1 准确率</td><td>71.4%</td><td>75.0%</td><td>75.0%</td></tr>
+<tr><td>recall@3</td><td>85.7%</td><td>85.7%</td><td>85.7%</td></tr>
+<tr><td>recall@5</td><td>85.7%</td><td>85.7%</td><td>85.7%</td></tr>
+<tr><td>MRR</td><td>0.786</td><td>0.804</td><td>0.804</td></tr>
+<tr><td>换词题 top-1</td><td>16.7%</td><td>16.7%</td><td>16.7%</td></tr>
+<tr><td>延迟 中位 / 95 分位</td><td colspan="3" class="center">0.6 毫秒 / 2.0 毫秒（未命中缓存）</td></tr>
+</tbody>
+</table>
+
+<p>需要如实说明一个结论：<strong>本地的确定性哈希向量在本数据集上并不提升排序</strong>，词法加权与混合检索的 top-1 完全一致。它的价值不在当下，而在于两件事：一是向量通道的工程链路已经打通并经过验证（切换到真实 embedding 接口后，用模拟语义服务测试可达到 top-1 82.1%、recall@3 96.4%、MRR 0.881）；二是换词类提问在真实语义模型下才有解，本地哈希向量做不到同义改写。</p>
+
+<h3>12.3 格式与链路验证</h3>
+
+<table border="1">
+<thead>
+<tr><th style="width:34%">验证项</th><th style="width:66%">结果</th></tr>
+</thead>
+<tbody>
+<tr><td>六种格式入库</td><td>docx / pptx / xlsx / pdf / csv / md 全部成功，切块数与字数正常</td></tr>
+<tr><td>目录批量导入</td><td>扫描 5 个文件、新增 5、失败 0</td></tr>
+<tr><td>重复入库幂等</td><td>第二次返回跳过，并回显已有块数与字数</td></tr>
+<tr><td>职级隔离效果</td><td>同一查询下 L5 命中机密文档，L1 零命中且退回公开文档</td></tr>
+<tr><td>后台越权拦截</td><td>低权限角色访问成员、密钥、改密级接口均返回 403</td></tr>
+<tr><td>跨企业隔离</td><td>企业 B 访问企业 A 的文档返回 404，成员列表不含企业 A</td></tr>
+</tbody>
+</table>
+
+<h2>13　已知限制</h2>
+
+<table border="1">
+<thead>
+<tr><th style="width:24%">限制</th><th style="width:42%">说明</th><th style="width:34%">规避方式</th></tr>
+</thead>
+<tbody>
+<tr><td>扫描件无 OCR</td><td>图片型 PDF、纯截图幻灯片抽不出文字，标记为解析失败</td><td>原件已保存不会丢；补做 OCR 后重传，或上传可复制文本的版本</td></tr>
+<tr><td>PDF 中文可能乱码</td><td>内置解析不处理部分中文字体映射</td><td>安装 pypdf 等外部工具后可改善；解析失败计数会暴露这类文件</td></tr>
+<tr><td>不支持旧版二进制格式</td><td>.doc / .ppt / .xls 无法解析</td><td>另存为 .docx / .pptx / .xlsx</td></tr>
+<tr><td>本地向量不具语义能力</td><td>哈希向量只做词形近似，不做同义改写</td><td>配置真实 embedding 接口后自动改善</td></tr>
+<tr><td>单机单进程写</td><td>SQLite 写锁，并发写会等待</td><td>入库任务串行化，单文档控制在 5 万字符内</td></tr>
+<tr><td>原件不做容量治理</td><td>删除文档后原件仍占磁盘</td><td>按引用关系定期清理孤儿文件</td></tr>
+<tr><td>无单点登录</td><td>后台仅支持邮箱密码</td><td>接入企业 SSO 时替换登录认证段即可</td></tr>
+<tr><td>同义词表需人工维护</td><td>不会自动学习</td><td>从审计日志的零结果查询中提炼补充</td></tr>
+</tbody>
+</table>
+
+<h2>14　后续规划</h2>
+
+<table border="1">
+<thead>
+<tr><th style="width:26%">方向</th><th style="width:74%">说明</th></tr>
+</thead>
+<tbody>
+<tr><td>接入真实向量模型</td><td>配置 OpenAI 兼容 embedding 接口，无需改代码；切换后用重建命令刷新向量</td></tr>
+<tr><td>企业单点登录</td><td>对接企业微信、钉钉或 OIDC，替换后台登录认证段</td></tr>
+<tr><td>部门树权限</td><td>当前按职级划分，可扩展为"部门 + 职级"二维，支持跨部门可见性</td></tr>
+<tr><td>查询改写</td><td>用大模型把口语化提问改写为关键词再检索，显著提升语义类提问的命中</td></tr>
+<tr><td>文档级分享</td><td>支持带有效期的临时访问链接，便于跨系统引用</td></tr>
+<tr><td>OCR 集成</td><td>接入本地 OCR 引擎处理扫描件，补齐当前最大的内容缺口</td></tr>
+<tr><td>水平扩展</td><td>数据量超过单机承载时，检索层可替换为向量数据库，接口保持不变</td></tr>
+</tbody>
+</table>
+
+</body>
+</html>

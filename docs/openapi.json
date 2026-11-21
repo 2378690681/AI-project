@@ -1,0 +1,2636 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "企业外置知识库 · KB Hub API",
+    "version": "0.3.0",
+    "description": "面向企业业务系统的知识库开放接口。所有 /v1/* 接口需要 Bearer 认证。\n\n【部署形态】单实例：一个企业一套服务、一个数据库文件（默认 data/kb.db，可用 config.database 或环境变量 KB_DB 指定）。不存在「一套服务托管多个企业」，企业之间靠部署边界隔离，而不是靠库内过滤。\n\n两种典型调用方式：\n- `POST /v1/search` 拿原文片段，自己接大模型；\n- `POST /v1/ask` 直接拿带引用的答案。\n\n调用方务必根据 `mode` 字段决定展示策略：`empty` 表示知识库没有依据，不要用常识补答案。\n\n【数据权限】密钥带 `reader_level`（1~5），请求体可再用 `level` 压低、不能抬高，实际生效等级取较小值并在响应回显。密级高于该等级的文档、FAQ、检索结果完全不可见。\n\n【检索通道】默认 `hybrid`（词法加权 + 向量余弦融合），响应里的 `retrieval` 告知实际通道与权重；传 `vector:false` 可降级为纯词法。\n\n【不在本契约内】`/admin` 与 `/admin/api/*` 走登录会话 + Cookie，面向人操作，单独见设计文档。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:7300",
+      "description": "本地默认"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "检索",
+      "description": "查询知识库"
+    },
+    {
+      "name": "文档",
+      "description": "文档入库与读取"
+    },
+    {
+      "name": "FAQ",
+      "description": "标准问答条目"
+    },
+    {
+      "name": "空间",
+      "description": "知识空间管理"
+    },
+    {
+      "name": "管理",
+      "description": "租户与密钥管理，仅根密钥可用"
+    },
+    {
+      "name": "后台",
+      "description": "/admin 下的会话鉴权接口，不在本 OpenAPI 契约内"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "格式：Bearer kb_live_xxx。也可用 X-API-Key 请求头。"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "unauthorized"
+              },
+              "message": {
+                "type": "string",
+                "example": "API Key 无效、已吊销、已过期，或所属租户被停用"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "Hit": {
+        "type": "object",
+        "properties": {
+          "chunk_id": {
+            "type": "string"
+          },
+          "doc_id": {
+            "type": "string"
+          },
+          "doc_title": {
+            "type": "string"
+          },
+          "heading": {
+            "type": "string",
+            "description": "章节路径，如「部署 > 环境要求」"
+          },
+          "content": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "description": "相关度分。hybrid 模式下为 0~1 的融合分（0.7×词法归一 + 0.3×余弦），lexical 模式下为 BM25 归一化分；跨租户、跨版本不可比，只用于同一响应内的排序与阈值"
+          },
+          "relevance": {
+            "type": "number",
+            "description": "相对最高分的比例 0~1，适合做排序展示"
+          },
+          "coverage": {
+            "type": "number",
+            "description": "查询词命中比例 0~1，适合判断可信度"
+          },
+          "space_id": {
+            "type": "string"
+          },
+          "space_name": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "doc_type": {
+            "type": "string"
+          },
+          "source_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "uploader": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "上传人工号/邮箱"
+          },
+          "file_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "原始件 ID，可用 GET /v1/documents/{id}/file 下载"
+          },
+          "parse_status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "failed",
+              "pending"
+            ],
+            "description": "failed 表示原件已存但没抽出文字"
+          },
+          "min_level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "密级：1=公开 2=内部 3=敏感 4=机密 5=绝密。等级越高可读的文档越少"
+          },
+          "seq": {
+            "type": "integer",
+            "description": "块在文档内的序号"
+          },
+          "score_detail": {
+            "type": "object",
+            "description": "仅当请求带 debug:true 时返回。含 lexical/vector_cos/phrase/field/proximity 等分项，以及 filter 说明为什么被过滤"
+          }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "took_ms": {
+            "type": "integer"
+          },
+          "query_terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Hit"
+            }
+          },
+          "total_chunks": {
+            "type": "integer",
+            "description": "租户内总块数，用于判断语料规模"
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "是否命中服务端查询缓存"
+          },
+          "reader_level": {
+            "type": "integer",
+            "description": "本次实际生效的数据等级（密钥等级与请求 level 的较小值）"
+          },
+          "retrieval": {
+            "$ref": "#/components/schemas/Retrieval"
+          }
+        },
+        "description": "检索结果。hits 已按等级过滤，调用方拿到的就是可见范围"
+      },
+      "Citation": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "doc_id": {
+            "type": "string"
+          },
+          "doc_title": {
+            "type": "string"
+          },
+          "heading": {
+            "type": "string"
+          },
+          "chunk_id": {
+            "type": "string"
+          },
+          "space_name": {
+            "type": "string"
+          },
+          "source_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "score": {
+            "type": "number"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "min_level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "密级：1=公开 2=内部 3=敏感 4=机密 5=绝密。等级越高可读的文档越少"
+          }
+        }
+      },
+      "AskResponse": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "faq",
+              "llm",
+              "extractive",
+              "empty"
+            ],
+            "description": "faq=命中标准问答；llm=大模型生成；extractive=原文摘录；empty=知识库无依据"
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            }
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "took_ms": {
+            "type": "integer"
+          },
+          "disclaimer": {
+            "type": "string"
+          },
+          "warning": {
+            "type": "string"
+          },
+          "reader_level": {
+            "type": "integer",
+            "description": "本次实际生效的数据等级"
+          },
+          "retrieval": {
+            "$ref": "#/components/schemas/Retrieval"
+          }
+        }
+      },
+      "Document": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "space_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "doc_type": {
+            "type": "string",
+            "enum": [
+              "md",
+              "txt",
+              "html",
+              "docx",
+              "pdf"
+            ]
+          },
+          "source_type": {
+            "type": "string"
+          },
+          "source_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "internal",
+              "restricted"
+            ]
+          },
+          "version": {
+            "type": "integer"
+          },
+          "char_count": {
+            "type": "integer"
+          },
+          "chunk_count": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "min_level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "密级：1=公开 2=内部 3=敏感 4=机密 5=绝密。等级越高可读的文档越少"
+          },
+          "uploader": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "original_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parse_status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "failed",
+              "pending"
+            ]
+          }
+        }
+      },
+      "Space": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "doc_count": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        }
+      },
+      "Faq": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "space_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "question": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hit_count": {
+            "type": "integer"
+          },
+          "min_level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "密级：1=公开 2=内部 3=敏感 4=机密 5=绝密。等级越高可读的文档越少"
+          }
+        }
+      },
+      "UploadItem": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "created",
+              "updated",
+              "skipped",
+              "failed"
+            ],
+            "description": "skipped 表示内容未变化；若同时带了新的 min_level，会更新密级并在 reason 里说明"
+          },
+          "docId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "chunkCount": {
+            "type": "integer"
+          },
+          "charCount": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "fileId": {
+            "type": "string"
+          },
+          "parseStatus": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "partial",
+              "failed"
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "minLevel": {
+            "type": "integer",
+            "description": "本次写入的文档密级"
+          }
+        }
+      },
+      "UploadResponse": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "succeeded": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "parse_failed": {
+            "type": "integer",
+            "description": "原始件已保存但没抽出文字的文件数"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UploadItem"
+            }
+          },
+          "hint": {
+            "type": "string"
+          }
+        }
+      },
+      "DocumentVersion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "char_count": {
+            "type": "integer"
+          },
+          "chunk_count": {
+            "type": "integer"
+          },
+          "source_hash": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string",
+            "description": "created | updated | rollback"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Retrieval": {
+        "type": "object",
+        "description": "本次检索实际使用的通道与权重，便于排查「为什么这条没出来」",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "hybrid",
+              "lexical"
+            ],
+            "description": "hybrid=词法+向量融合；lexical=仅词法（租户无向量，或请求带 vector:false）"
+          },
+          "lexical_weight": {
+            "type": "number",
+            "description": "词法通道权重，hybrid 下默认 0.7"
+          },
+          "vector_weight": {
+            "type": "number",
+            "description": "向量通道权重，hybrid 下默认 0.3"
+          },
+          "vector_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "向量模型名，如 hash-256-v2；lexical 模式为 null"
+          },
+          "vector_candidates": {
+            "type": "integer",
+            "description": "参与打分的向量候选块数"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "检索"
+        ],
+        "summary": "健康检查（无需认证）",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "服务状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "uptime_sec": {
+                      "type": "integer"
+                    },
+                    "llm": {
+                      "type": "string",
+                      "example": "disabled (extractive fallback)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/meta": {
+      "get": {
+        "tags": [
+          "检索"
+        ],
+        "summary": "当前租户信息、语料规模与能力清单",
+        "responses": {
+          "200": {
+            "description": "租户元信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tenant": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "plan": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "reader_level": {
+                      "type": "integer",
+                      "description": "当前密钥的数据等级上限"
+                    },
+                    "corpus": {
+                      "type": "object",
+                      "properties": {
+                        "chunks": {
+                          "type": "integer",
+                          "description": "可见知识块数（已按 reader_level 过滤）"
+                        },
+                        "documents": {
+                          "type": "integer",
+                          "description": "可见文档数（已按 reader_level 过滤）"
+                        },
+                        "faqs": {
+                          "type": "integer",
+                          "description": "可见 FAQ 数（已按 reader_level 过滤）"
+                        },
+                        "avg_chunk_terms": {
+                          "type": "number"
+                        },
+                        "parse_failed": {
+                          "type": "integer"
+                        },
+                        "storage": {
+                          "type": "object",
+                          "description": "原件存储统计（文件数、字节数）"
+                        },
+                        "vectors": {
+                          "type": "object",
+                          "description": "向量统计；向量存在主库的 vectors 表里，不再单独一个文件"
+                        },
+                        "database": {
+                          "type": "string",
+                          "description": "本企业数据库文件路径（单实例部署下就是唯一的库文件）"
+                        },
+                        "total_documents": {
+                          "type": "integer",
+                          "description": "企业全部文档数，含当前密钥看不到的密级；用于展示规模，不要当作可检索范围"
+                        }
+                      }
+                    },
+                    "spaces": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Space"
+                      }
+                    },
+                    "capabilities": {
+                      "type": "object",
+                      "properties": {
+                        "retrieval": {
+                          "type": "string",
+                          "enum": [
+                            "hybrid-bm25-vector"
+                          ]
+                        },
+                        "answer_mode": {
+                          "type": "string",
+                          "enum": [
+                            "llm",
+                            "extractive"
+                          ]
+                        },
+                        "max_top_k": {
+                          "type": "integer"
+                        },
+                        "max_body_mb": {
+                          "type": "integer"
+                        },
+                        "max_upload_files": {
+                          "type": "integer"
+                        },
+                        "supported_formats": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "original_file_download": {
+                          "type": "boolean"
+                        },
+                        "version_history": {
+                          "type": "boolean"
+                        },
+                        "isolation": {
+                          "type": "string",
+                          "enum": [
+                            "single-instance-database"
+                          ],
+                          "description": "single-instance-database = 一个企业一个数据库文件，隔离靠部署边界"
+                        },
+                        "access_levels": {
+                          "type": "object",
+                          "description": "等级定义 L1~L5"
+                        },
+                        "doc_levels": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          },
+                          "description": "文档密级选项，供上传界面渲染下拉框"
+                        },
+                        "roles": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "instance": {
+                          "type": "object",
+                          "description": "本实例代表的企业",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/search": {
+      "post": {
+        "tags": [
+          "检索"
+        ],
+        "summary": "检索原文片段",
+        "description": "适合自己接大模型的业务系统。默认走混合检索（词法 0.7 + 向量 0.3），返回按相关度排序的片段，带章节路径、密级与来源。密级高于调用方等级的块不会出现。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "query"
+                ],
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "自然语言或关键词"
+                  },
+                  "space_id": {
+                    "type": "string",
+                    "description": "限定知识空间"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "任一标签命中即保留"
+                  },
+                  "top_k": {
+                    "type": "integer",
+                    "default": 8,
+                    "maximum": 50
+                  },
+                  "min_score": {
+                    "type": "number",
+                    "description": "绝对分数下限，默认 0.1"
+                  },
+                  "roles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "访问 restricted 文档所需的角色"
+                  },
+                  "level": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "本次请求的数据等级，只能压低密钥等级，不能抬高"
+                  },
+                  "vector": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "false 则跳过向量通道，退化为纯词法检索"
+                  },
+                  "debug": {
+                    "type": "boolean",
+                    "description": "true 时返回 score_detail 并绕开缓存，用于排查排序"
+                  },
+                  "plain": {
+                    "type": "boolean",
+                    "description": "true 时不做上下文扩展，只返回命中块本身"
+                  },
+                  "expand": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "是否把相邻块拼进 content"
+                  }
+                }
+              },
+              "example": {
+                "query": "退款多久到账",
+                "top_k": 3
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "检索结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "query 为空"
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "缺少 search 权限"
+          },
+          "429": {
+            "description": "触发限流，看 Retry-After 头"
+          }
+        }
+      }
+    },
+    "/v1/ask": {
+      "post": {
+        "tags": [
+          "检索"
+        ],
+        "summary": "问答，返回带引用的答案",
+        "description": "优先命中 FAQ；未命中则检索文档，配置了大模型则生成答案，否则返回原文摘录。调用方必须根据 mode 决定展示策略。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "query"
+                ],
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  },
+                  "space_id": {
+                    "type": "string"
+                  },
+                  "top_k": {
+                    "type": "integer"
+                  },
+                  "min_faq_confidence": {
+                    "type": "number",
+                    "default": 0.5,
+                    "description": "FAQ 直接命中的最低覆盖率"
+                  },
+                  "roles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "level": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "本次请求的数据等级，只能压低密钥等级，不能抬高"
+                  }
+                }
+              },
+              "example": {
+                "query": "数据库锁等待怎么排查"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "答案与引用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "query 为空"
+          },
+          "429": {
+            "description": "触发限流"
+          }
+        }
+      }
+    },
+    "/v1/documents": {
+      "get": {
+        "tags": [
+          "文档"
+        ],
+        "summary": "文档列表",
+        "parameters": [
+          {
+            "name": "space_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "标题关键词"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 200
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "description": "按该员工等级过滤，只能压低不能抬高密钥等级"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Document"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "分页列出文档。密级高于调用方等级（或 query 里的 level）的文档不会返回；level=1 只返回公开文档，不传则按密钥的 reader_level 截断。"
+      },
+      "post": {
+        "tags": [
+          "文档"
+        ],
+        "summary": "文档入库（幂等）",
+        "description": "同一 source_uri 内容未变化返回 skipped；内容变化自动升版本并重建索引。因此同步任务可以反复全量推送。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "正文（markdown 或纯文本）"
+                  },
+                  "file_base64": {
+                    "type": "string",
+                    "description": "文件内容 base64，与 content 二选一；支持 docx/md/html/txt"
+                  },
+                  "filename": {
+                    "type": "string",
+                    "description": "配合 file_base64 使用，按扩展名决定解析方式"
+                  },
+                  "space": {
+                    "type": "string",
+                    "description": "空间 slug 或名称，不存在会自动创建"
+                  },
+                  "space_id": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "source_uri": {
+                    "type": "string",
+                    "description": "强烈建议提供，它是幂等判断的依据"
+                  },
+                  "source_type": {
+                    "type": "string",
+                    "default": "http"
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "internal",
+                      "restricted"
+                    ]
+                  },
+                  "allowed_roles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "min_level": {
+                    "type": "integer",
+                    "description": "文档密级 1~5，默认 1；会被密钥等级截断"
+                  }
+                }
+              },
+              "example": {
+                "title": "紫罗兰协议说明",
+                "content": "# 紫罗兰协议说明\n\n## 协议目标\n…",
+                "space": "产品文档",
+                "tags": [
+                  "协议",
+                  "安全"
+                ],
+                "source_uri": "https://wiki.example.com/violet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已存在并更新（version 递增），或内容未变化（status=skipped）"
+          },
+          "201": {
+            "description": "新建成功"
+          },
+          "400": {
+            "description": "正文为空"
+          },
+          "403": {
+            "description": "缺少 write 权限"
+          }
+        }
+      }
+    },
+    "/v1/documents/{id}": {
+      "get": {
+        "tags": [
+          "文档"
+        ],
+        "summary": "文档详情",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "with_chunks",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "description": "按该员工等级过滤，只能压低不能抬高密钥等级"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "文档详情，with_chunks=1 时附 chunks 数组"
+          },
+          "404": {
+            "description": "不存在或不属于该租户"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "文档"
+        ],
+        "summary": "删除文档并清理索引",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已删除"
+          },
+          "404": {
+            "description": "不存在"
+          }
+        }
+      }
+    },
+    "/v1/spaces": {
+      "get": {
+        "tags": [
+          "空间"
+        ],
+        "summary": "知识空间列表",
+        "responses": {
+          "200": {
+            "description": "空间列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Space"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "空间"
+        ],
+        "summary": "新建知识空间（需 admin 权限）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/v1/faqs": {
+      "get": {
+        "tags": [
+          "FAQ"
+        ],
+        "summary": "FAQ 列表",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "description": "按该员工等级过滤 FAQ"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "FAQ 列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Faq"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "FAQ"
+        ],
+        "summary": "录入标准问答",
+        "description": "高频问题做成 FAQ 比纯文档检索更稳：命中即返回标准答案，不受措辞影响。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "question",
+                  "answer"
+                ],
+                "properties": {
+                  "question": {
+                    "type": "string"
+                  },
+                  "answer": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "space_id": {
+                    "type": "string"
+                  },
+                  "min_level": {
+                    "type": "integer",
+                    "description": "FAQ 密级 1~5，默认 1；检索与直答都会按等级过滤"
+                  }
+                }
+              },
+              "example": {
+                "question": "怎么申请发票",
+                "answer": "订单详情页点击申请发票，2 个工作日内发送至邮箱。",
+                "tags": [
+                  "财务"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/v1/faqs/{id}": {
+      "delete": {
+        "tags": [
+          "FAQ"
+        ],
+        "summary": "删除 FAQ",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已删除"
+          },
+          "404": {
+            "description": "不存在"
+          }
+        }
+      }
+    },
+    "/v1/audit": {
+      "get": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "调用审计日志（需 admin 权限）",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "maximum": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "审计记录列表"
+          }
+        }
+      }
+    },
+    "/v1/admin/tenants": {
+      "get": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "租户列表（仅根密钥）",
+        "responses": {
+          "200": {
+            "description": "含各租户文档数、块数、有效密钥数"
+          }
+        },
+        "description": "【兼容接口】只返回本实例一条记录（items.length === 1），用于过渡期老脚本。新代码请用 GET /v1/admin/instance。",
+        "deprecated": true
+      },
+      "post": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "创建租户（仅根密钥）",
+        "description": "【已下线】多企业模式取消。调用会返回 410 gone —— 一个企业一套服务，请部署新实例并用 config.database / KB_DB 指定它自己的库。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "可选，指定后租户 ID 为 t_<id>"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "plan": {
+                    "type": "string",
+                    "default": "standard"
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "默认 search/read/write"
+                  },
+                  "create_key": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "owner_email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "企业后台 owner 账号邮箱；不传则不建后台账号"
+                  },
+                  "owner_password": {
+                    "type": "string",
+                    "description": "初始密码；不传则随机生成并在响应中返回一次"
+                  },
+                  "owner_name": {
+                    "type": "string",
+                    "description": "owner 姓名"
+                  }
+                }
+              },
+              "example": {
+                "id": "acme",
+                "name": "示例公司",
+                "scopes": [
+                  "search",
+                  "read",
+                  "write"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "租户与密钥",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tenant": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "plan": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "database": {
+                          "type": "string",
+                          "description": "本租户独立库路径"
+                        }
+                      }
+                    },
+                    "api_key": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "plaintext": {
+                          "type": "string",
+                          "description": "只显示这一次"
+                        },
+                        "scopes": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "owner": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "后台 owner 账号（未传 owner_email 时为 null）",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "password": {
+                          "type": "string",
+                          "description": "只返回这一次"
+                        },
+                        "login_url": {
+                          "type": "string",
+                          "description": "固定为 /admin"
+                        },
+                        "warning": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "多企业模式已下线",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "deprecated": true
+      }
+    },
+    "/v1/admin/tenants/{id}": {
+      "get": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "租户详情",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "租户详情：统计、向量、存储、空间、密钥、后台成员",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "plan": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "stats": {
+                      "type": "object"
+                    },
+                    "vectors": {
+                      "type": "object",
+                      "description": "本租户向量库统计"
+                    },
+                    "storage": {
+                      "type": "object"
+                    },
+                    "spaces": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Space"
+                      }
+                    },
+                    "keys": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "owner",
+                              "admin",
+                              "manager",
+                              "editor",
+                              "viewer"
+                            ]
+                          },
+                          "level": {
+                            "type": "integer"
+                          },
+                          "department": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "last_login_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "不存在"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "启用 / 停用租户",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "suspended"
+                    ]
+                  }
+                }
+              },
+              "example": {
+                "status": "suspended"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新后的租户"
+          }
+        }
+      }
+    },
+    "/v1/admin/tenants/{id}/keys": {
+      "get": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "租户密钥列表（不含明文）",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "密钥列表"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "签发新密钥",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "search",
+                        "read",
+                        "write",
+                        "admin"
+                      ]
+                    }
+                  },
+                  "rate_limit": {
+                    "type": "integer",
+                    "description": "每分钟请求数，默认 120"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "reader_level": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "该密钥可读的最高密级，默认 5（全部可读）；客服类密钥建议 2"
+                  }
+                }
+              },
+              "example": {
+                "name": "客服系统只读",
+                "scopes": [
+                  "search",
+                  "read"
+                ],
+                "rate_limit": 300
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "密钥明文，只显示一次",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "plaintext": {
+                      "type": "string",
+                      "description": "只返回这一次"
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "reader_level": {
+                      "type": "integer"
+                    },
+                    "warning": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/tenants/{id}/reindex": {
+      "post": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "重建租户索引",
+        "description": "修改切分参数或分词逻辑后调用。",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "重建结果（文档数 / 块数）"
+          }
+        }
+      }
+    },
+    "/v1/admin/keys/{id}": {
+      "delete": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "吊销密钥（立即生效）",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已吊销"
+          },
+          "404": {
+            "description": "不存在"
+          }
+        }
+      }
+    },
+    "/v1/admin/stats": {
+      "get": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "全局统计",
+        "responses": {
+          "200": {
+            "description": "租户数、成员数、文档数、块数、词项数、向量数、24 小时查询量",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tenants": {
+                      "type": "integer"
+                    },
+                    "members": {
+                      "type": "integer",
+                      "description": "全部企业后台账号数"
+                    },
+                    "documents": {
+                      "type": "integer"
+                    },
+                    "chunks": {
+                      "type": "integer"
+                    },
+                    "terms": {
+                      "type": "integer"
+                    },
+                    "vectors": {
+                      "type": "integer",
+                      "description": "各租户向量库累加"
+                    },
+                    "queries_24h": {
+                      "type": "integer"
+                    },
+                    "files": {
+                      "type": "integer"
+                    },
+                    "file_bytes": {
+                      "type": "integer"
+                    },
+                    "cache": {
+                      "type": "object"
+                    },
+                    "isolation": {
+                      "type": "string",
+                      "enum": [
+                        "single-instance-database"
+                      ]
+                    },
+                    "instance": {
+                      "type": "object",
+                      "description": "本企业信息"
+                    },
+                    "database": {
+                      "type": "string",
+                      "description": "数据库文件路径"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/uploads": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "上传文件（员工入口）",
+        "description": "支持 multipart/form-data（推荐，浏览器 FormData 直接可用，单次最多 20 个文件）与 application/json base64 两种提交方式。原始件按 sha256 落盘保存；解析失败的文件同样入库并标记 parse_status=failed，原件仍可下载。",
+        "operationId": "uploadDocuments",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "description": "文件，可重复该字段上传多个"
+                  },
+                  "space": {
+                    "type": "string",
+                    "description": "空间 slug，不存在会自动创建"
+                  },
+                  "space_id": {
+                    "type": "string",
+                    "description": "空间 id，优先于 space"
+                  },
+                  "tags": {
+                    "type": "string",
+                    "description": "逗号分隔的标签"
+                  },
+                  "uploader": {
+                    "type": "string",
+                    "description": "上传人工号/邮箱"
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "internal",
+                      "restricted"
+                    ]
+                  },
+                  "min_level": {
+                    "type": [
+                      "integer",
+                      "string"
+                    ],
+                    "description": "文档密级 1~5，默认 1；会被密钥等级截断（取较小值）"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "filename": {
+                    "type": "string"
+                  },
+                  "base64": {
+                    "type": "string",
+                    "description": "文件内容的 base64"
+                  },
+                  "space": {
+                    "type": "string"
+                  },
+                  "space_id": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "uploader": {
+                    "type": "string"
+                  },
+                  "min_level": {
+                    "type": "integer",
+                    "description": "文档密级 1~5，默认 1"
+                  }
+                },
+                "required": [
+                  "filename",
+                  "base64"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "全部或部分文件入库成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "错误响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "错误响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/documents/{id}/file": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "下载原始件",
+        "description": "下载原始件。密级高于调用方 reader_level 时返回 403（不是 404），因为文档本身对调用方可见、只是原件受保护；对完全无权访问的文档则统一 404。",
+        "operationId": "downloadDocumentFile",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "description": "按该员工等级过滤，只能压低不能抬高密钥等级"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "原始文件二进制流",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "attachment; filename*=UTF-8''..."
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-File-Sha256": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "错误响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/documents/{id}/versions": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "文档版本历史",
+        "description": "每次内容变化留一条记录，含当次的 file_id，可下载任一历史版本原件。",
+        "operationId": "listDocumentVersions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "版本列表（按版本号倒序）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "doc_id": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "versions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DocumentVersion"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "错误响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/instance": {
+      "get": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "本企业详情",
+        "description": "单实例部署下没有「切换企业」，返回本企业的规模、向量、存储、空间、密钥与后台成员。",
+        "responses": {
+          "200": {
+            "description": "本企业详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "plan": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "database": {
+                      "type": "string",
+                      "description": "数据库文件路径"
+                    },
+                    "database_bytes": {
+                      "type": "integer",
+                      "description": "库文件字节数"
+                    },
+                    "stats": {
+                      "type": "object"
+                    },
+                    "vectors": {
+                      "type": "object"
+                    },
+                    "storage": {
+                      "type": "object"
+                    },
+                    "spaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "keys": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "修改企业名称或启停",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "suspended"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新后的企业详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "plan": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "database": {
+                      "type": "string",
+                      "description": "数据库文件路径"
+                    },
+                    "database_bytes": {
+                      "type": "integer",
+                      "description": "库文件字节数"
+                    },
+                    "stats": {
+                      "type": "object"
+                    },
+                    "vectors": {
+                      "type": "object"
+                    },
+                    "storage": {
+                      "type": "object"
+                    },
+                    "spaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "keys": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/keys": {
+      "get": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "列出本企业密钥",
+        "responses": {
+          "200": {
+            "description": "密钥列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "签发密钥",
+        "description": "明文只在本次响应返回一次。",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "search",
+                        "read",
+                        "write",
+                        "admin"
+                      ]
+                    }
+                  },
+                  "rate_limit": {
+                    "type": "integer"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "reader_level": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "该密钥可读的最高密级，默认 5"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "密钥明文",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "plaintext": {
+                      "type": "string",
+                      "description": "只返回这一次"
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "reader_level": {
+                      "type": "integer"
+                    },
+                    "warning": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/reindex": {
+      "post": {
+        "tags": [
+          "管理"
+        ],
+        "summary": "重建倒排索引与向量",
+        "description": "换切分参数或换 embedding 模型后执行。单实例下作用于本企业全部文档。",
+        "responses": {
+          "200": {
+            "description": "重建结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "documents": {
+                      "type": "integer"
+                    },
+                    "chunks": {
+                      "type": "integer"
+                    },
+                    "vectors": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
